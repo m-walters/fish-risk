@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "fish-risk"
+version = "0.1.0"
+description = ""
+authors = ["Michael Walters <michaelwalters3000@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+
+packages = [
+    {include = "sim", from = "src"},
+]
+
+[tool.poetry.dependencies]
+# Dependencies
+# Remember to 'poetry update' after changing
+python = ">=3.12,<3.13"  # pytensor has a restrictive range
+numpy = "^1.26.4"
+scikit-learn = "^1.4.1"
+pytensor = "^2.20.0"
+pymc = "^5.13.1"
+diffrax = "^0.5.0"
+arviz = "^0.18.0"
+namedtupled = "^0.3.3"
+jax = {extras = ["cpu"], version = "^0.4.26"}
+
+
+matplotlib = "*"
+notebook = "*"
+jupyterlab = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
