@@ -8,16 +8,17 @@ from sim.models import EulerMaruyamaDynamics, \
     ProfitMaximizingPolicy, \
     LossModel, SoftmaxPreferencePrior, UniformPreferencePrior, \
     RiskModel, Model
+from sim.plotting import plot_outputs
 
 
 t_end = 100
-num_points = 20
+num_points = 10
 D = 100  # no Brownian motion
 mc = 100
 horizon = 20
-P0 = 5
+P0 = 1.2
 rho = -0.9
-C0 = 5
+C0 = 1.2
 gamma = -0.9
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
@@ -48,16 +49,24 @@ with pm.Model() as pm_model:  # this is a pymc model and in particular the "with
 
 p = Params(**samples.prior)
 
-experimental_model = Model(
-    p,
-    mc,
-    dynamics,
-    horizon,
-    policy,
-    revenue_model,
-    cost_model,
-    loss_model,
-    risk_model,
-    debug=True,
-)
-experimental_model()
+omegas = np.arange(0, 4.0, 0.5)
+outputs = []
+for w in omegas:
+    print('Simulating with omega = {}\n'.format(w))
+    experimental_model = Model(
+        p,
+        mc,
+        dynamics,
+        horizon,
+        policy,
+        revenue_model,
+        cost_model,
+        loss_model,
+        risk_model,
+        debug=True,
+        omega_scale=w,
+    )
+    output = experimental_model()
+    outputs.append(output)
+
+plot_outputs(outputs, omegas)

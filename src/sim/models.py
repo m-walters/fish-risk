@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import differential_entropy as entr
 import pymc as pm
 
-from sim.utils import Params
+from sim.utils import Params, Output
 
 import warnings
 
@@ -152,6 +152,7 @@ class Model:
         loss_model,
         risk_model,
         debug=False,
+        omega_scale=1,
     ):
         self.params = params
         self.mc = mc
@@ -163,6 +164,7 @@ class Model:
         self.loss_model = loss_model
         self.risk_model = risk_model
         self.debug = debug
+        self.omega_scale = omega_scale
 
     def print(self, out: str, force: bool = False):
         if self.debug or force:
@@ -191,6 +193,7 @@ class Model:
         Vt = jnp.nan_to_num(np.array(Vt), copy=False)
         Lt = self.loss_model(Vt, t, params.w)
 
+        # update params with new fish biomass
         params = Params(
             B=Bt,
             w=params.w,
@@ -216,7 +219,7 @@ class Model:
         # ws = jnp.vstack([np.array(p.w) for p in params])
         # ws = jnp.vstack([np.random.rand(*self.params.w.shape) for p in params])
         # ws = jnp.vstack([np.zeros(self.params.w.shape) for p in params])
-        ws = jnp.vstack([np.ones(self.params.w.shape) for p in params])
+        ws = jnp.vstack([self.omega_scale * np.ones(self.params.w.shape) for p in params])
         rs = jnp.vstack([np.array(p.r) for p in params])
         ks = jnp.vstack([np.array(p.k) for p in params])
         qEs = jnp.vstack([np.array(p.qE) for p in params])
@@ -227,7 +230,14 @@ class Model:
         return self.stack_params(param_list)
 
     def __call__(self):
+        bs = []
+        vs = []
+        rts = []
         for t_sim in range(self.horizon):
             Lt_sim, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
             sim_params = self.get_sim_params()
             Rt_sim = self.plan(t_sim, sim_params)
+            bs.append(Bt_sim)
+            vs.append(Vt_sim)
+            rts.append(Rt_sim)
+        return Output(Bs=bs, Vs=vs, Rts=rts)
