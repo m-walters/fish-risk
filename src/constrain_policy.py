@@ -15,9 +15,9 @@ num_points = 20
 D = 100  # no Brownian motion
 mc = 100
 horizon = 20
-P0 = 1
+P0 = 5
 rho = -0.9
-C0 = 1
+C0 = 5
 gamma = -0.9
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
@@ -39,8 +39,7 @@ NUM_PARAM_BATCHES = 1
 
 with pm.Model() as pm_model:  # this is a pymc model and in particular the "with...as..." syntax means all assignments in this block are associated with this model's context!
     B0 = pm.Normal("B", mu=90000, sigma=2000)
-    # w = pm.LogNormal('w', mu=1., sigma=0.00001)
-    w = pm.Uniform('w', lower=0., upper=1.)
+    w = pm.LogNormal('w', mu=1., sigma=0.01)
     r = pm.Normal("r", mu=0.2, sigma=0.06)
     k = pm.Normal("k", mu=100000, sigma=10000)
     qE = pm.Uniform("qE", lower=0., upper=1.)

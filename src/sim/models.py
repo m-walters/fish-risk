@@ -10,6 +10,7 @@ from sim.utils import Params
 
 import warnings
 
+
 class EulerMaruyamaDynamics:
     """
     Runs evolution of the fish population via the ODE
@@ -85,6 +86,8 @@ class ProfitMaximizingPolicy(Policy):
         # set Es to 0 if B vanishes
         Es = np.where(params.B > 0, 1 - (coef * Bp) ** inv_gamma_power, 0.)
         Es = np.minimum(1, np.maximum(Es, 0.))
+        if (Es == 0.).any():
+            warnings.warn("Optimal extraction rate qE = 0.")
         return Es
 
 
@@ -115,7 +118,7 @@ class PreferencePrior:
 
 class SoftmaxPreferencePrior(PreferencePrior):
     def __call__(self, Lt):
-        return jax.nn.softmax(self.l_bar - Lt)
+        return jax.nn.softmax(self.l_bar - Lt, axis=0)
 
 
 class UniformPreferencePrior(PreferencePrior):
