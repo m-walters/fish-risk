@@ -20,7 +20,8 @@ class JaxRKey:
 
 
 class Output:
-    def __init__(self, Bs, Vs, Rts):
+    def __init__(self, Es, Bs, Vs, Rts):
+        self.Es = np.stack(Es).squeeze()
         self.Bs = np.stack(Bs).squeeze()
         self.Vs = np.stack(Vs).squeeze()
         self.Rts = np.stack(Rts).squeeze()

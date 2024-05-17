@@ -230,14 +230,16 @@ class Model:
         return self.stack_params(param_list)
 
     def __call__(self):
+        es = []
         bs = []
         vs = []
         rts = []
         for t_sim in range(self.horizon):
+            es.append(self.params.qE)
             Lt_sim, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
             sim_params = self.get_sim_params()
             Rt_sim = self.plan(t_sim, sim_params)
             bs.append(Bt_sim)
             vs.append(Vt_sim)
             rts.append(Rt_sim)
-        return Output(Bs=bs, Vs=vs, Rts=rts)
+        return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
