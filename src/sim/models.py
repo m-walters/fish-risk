@@ -216,9 +216,6 @@ class Model:
 
     def stack_params(self, params: list) -> Params:
         Bs = jnp.vstack([np.array(p.B) for p in params])
-        # ws = jnp.vstack([np.array(p.w) for p in params])
-        # ws = jnp.vstack([np.random.rand(*self.params.w.shape) for p in params])
-        # ws = jnp.vstack([np.zeros(self.params.w.shape) for p in params])
         ws = jnp.vstack([self.omega_scale * np.ones(self.params.w.shape) for p in params])
         rs = jnp.vstack([np.array(p.r) for p in params])
         ks = jnp.vstack([np.array(p.k) for p in params])
