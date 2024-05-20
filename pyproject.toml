@@ -13,7 +13,8 @@ packages = [
 [tool.poetry.dependencies]
 # Dependencies
 # Remember to 'poetry update' after changing
-python = ">=3.12,<3.13"  # pytensor has a restrictive range
+# python = ">=3.12,<3.13"  # pytensor has a restrictive range
+python = ">=3.9"
 numpy = "^1.26.4"
 scikit-learn = "^1.4.1"
 pytensor = "^2.20.0"
