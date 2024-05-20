@@ -134,7 +134,7 @@ class RiskModel:
         # this printing is important for evolving the preference model
         sample_mean = jnp.log(self.preference_prior(Lt)).mean(axis=0)
         entropy = entr(Lt, axis=0)
-        Gt = sample_mean - entropy
+        Gt = entropy - sample_mean
         print("sample_mean {} - entropy {} = RISK: {}".format(sample_mean, entropy, Gt))
         return Gt
 
