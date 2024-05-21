@@ -18,9 +18,9 @@ D = 100
 mc = 100
 horizon = 20
 P0 = 1.2
-rho = -0.9
+rho = -0.8
 C0 = 1.2
-gamma = -0.9
+gamma = -0.5
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
 l_bar = P0 * B_max ** (1 + rho)
