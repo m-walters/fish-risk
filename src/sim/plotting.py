@@ -25,9 +25,9 @@ def plot_outputs(outputs, omegas):
         lower_ax.xaxis.get_major_locator().set_params(integer=True)
 
     axs[1, 1].legend(
-        bbox_to_anchor=(0.7425, 3.91),
+        bbox_to_anchor=(0.7925, 2.51),
         bbox_transform=axs[1, 1].transAxes,
-        ncol=len(omegas)/2,
+        ncol=len(omegas),
     )
 
     plt.savefig('../results/fish_sim.pdf')
