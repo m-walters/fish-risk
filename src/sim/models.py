@@ -4,7 +4,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.stats import differential_entropy as entr
-import pymc as pm
 
 from sim.utils import Params, Output
 
@@ -15,9 +14,9 @@ class EulerMaruyamaDynamics:
     """
     Runs evolution of the fish population via the ODE
     """
-    def __init__(self, t_end: int, num_points: int, D: float, max_b: float):
-        self.time_points = jnp.linspace(0., t_end, num_points)
-        self.dt = 1 / num_points
+    def __init__(self, sim_horizon: int, sim_steps: int, D: float, max_b: float):
+        self.time_points = jnp.linspace(0., sim_horizon, sim_steps)
+        self.dt = 1 / sim_steps
         self.D = D  # diffusion coefficient
         self.max_b = max_b
 
@@ -140,12 +139,17 @@ class RiskModel:
 
 
 class Model:
+    """
+    Main model that computes risk etc. through simulation of fishery evolution.
+    Uses `n_montecarlo` MonteCarlo predictive simulations at a given realworld
+    time step to calculate statistics.
+    """
     def __init__(
         self,
         params,
-        mc,
+        n_montecarlo,
         dynamics,
-        horizon,
+        real_horizon,
         policy,
         revenue_model,
         cost_model,
@@ -155,9 +159,9 @@ class Model:
         omega_scale=1,
     ):
         self.params = params
-        self.mc = mc
+        self.n_montecarlo = n_montecarlo
         self.dynamics = dynamics
-        self.horizon = horizon
+        self.real_horizon = real_horizon
         self.policy = policy
         self.revenue_model = revenue_model
         self.cost_model = cost_model
@@ -206,7 +210,7 @@ class Model:
 
     def plan(self, t_sim, params):
         Rt_sim = 0.
-        for t_plan in range(self.horizon):
+        for t_plan in range(self.real_horizon):
             t = t_sim + t_plan
             Lt, Vt, Bt, params = self.timestep(t, params)
             Gt = self.risk_model(Lt, Vt)
@@ -223,7 +227,7 @@ class Model:
         return Params(Bs, ws, rs, ks, qEs)
 
     def get_sim_params(self):
-        param_list = [copy(self.params) for _ in range(self.mc)]
+        param_list = [copy(self.params) for _ in range(self.n_montecarlo)]
         return self.stack_params(param_list)
 
     def __call__(self):
@@ -231,7 +235,7 @@ class Model:
         bs = []
         vs = []
         rts = []
-        for t_sim in range(self.horizon):
+        for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
             Lt_sim, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
             sim_params = self.get_sim_params()

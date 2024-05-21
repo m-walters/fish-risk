@@ -3,38 +3,37 @@
 import pymc as pm
 import numpy as np
 from sim.utils import Params
-from sim.models import EulerMaruyamaDynamics, \
-    RevenueModel, CostModel, RiskMitigationPolicy, \
-    ProfitMaximizingPolicy, \
-    LossModel, SoftmaxPreferencePrior, UniformPreferencePrior, \
-    RiskModel, Model
+from sim import models
 from sim.plotting import plot_outputs
 
+# Sim params
+# > Horizon and num steps for the model's inner simulation of the future
+inner_horizon = 100
+inner_steps = 10
+D = 100  # Inner sim brownian motion diffusion
+n_montecarlo = 100
+real_horizon = 20  # Realworld horizon steps
 
-t_end = 100
-num_points = 10
-D = 100  # no Brownian motion
-mc = 100
-horizon = 20
-P0 = 1.2
-rho = -0.9
-C0 = 1.2
-gamma = -0.9
+# Model params
+P0 = 1.2  # Profit
+rho = -0.9  # Profit
+C0 = 1.2  # Cost
+gamma = -0.9  # Cost
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
 l_bar = P0 * B_max ** (1 + rho)
 
 lmbdas = np.linspace(0., 1000., 100)
 
-dynamics = EulerMaruyamaDynamics(t_end, num_points, D, B_max)
-revenue_model = RevenueModel(P0=P0, rho=rho)
-cost_model = CostModel(C0=C0, gamma=gamma)
-# policy = RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
-policy = ProfitMaximizingPolicy(revenue_model, cost_model)
-loss_model = LossModel()
-preference_prior = SoftmaxPreferencePrior(l_bar)
-# preference_prior = UniformPreferencePrior(l_bar)
-risk_model = RiskModel(preference_prior)
+dynamics = models.EulerMaruyamaDynamics(inner_horizon, inner_steps, D, B_max)
+revenue_model = models.RevenueModel(P0=P0, rho=rho)
+cost_model = models.CostModel(C0=C0, gamma=gamma)
+# policy = models.RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
+policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
+loss_model = models.LossModel()
+preference_prior = models.SoftmaxPreferencePrior(l_bar)
+# preference_prior = models.UniformPreferencePrior(l_bar)
+risk_model = models.RiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 
@@ -53,17 +52,17 @@ omegas = np.arange(0, 4.0, 0.5)
 outputs = []
 for w in omegas:
     print('Simulating with omega = {}\n'.format(w))
-    experimental_model = Model(
+    experimental_model = models.Model(
         p,
-        mc,
+        n_montecarlo,
         dynamics,
-        horizon,
+        real_horizon,
         policy,
         revenue_model,
         cost_model,
         loss_model,
         risk_model,
-        debug=True,
+        debug=False,
         omega_scale=w,
     )
     output = experimental_model()
