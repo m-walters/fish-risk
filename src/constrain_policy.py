@@ -14,7 +14,7 @@ from sim.plotting import plot_outputs
 
 t_end = 100
 num_points = 10
-D = 100
+D = 1
 mc = 100
 horizon = 20
 P0 = 1.2
@@ -23,7 +23,7 @@ C0 = 1.2
 gamma = -0.5
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
-l_bar = P0 * B_max ** (1 + rho)
+l_bar = 0. #P0 * B_max ** (1 + rho)
 loss_scale = 0.1
 
 lmbdas = np.linspace(0., 1000., 100)
@@ -36,12 +36,12 @@ revenue_model = RevenueModel(P0=P0, rho=rho)
 cost_model = CostModel(C0=C0, gamma=gamma)
 # policy = RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
 policy = ProfitMaximizingPolicy(revenue_model, cost_model)
-# loss_model = LossModel()
-loss_model = NoisyLossModel(jax_rkey, loss_scale)
+loss_model = LossModel()
+# loss_model = NoisyLossModel(jax_rkey, loss_scale)
 preference_prior = SoftmaxPreferencePrior(l_bar)
 # preference_prior = UniformPreferencePrior(l_bar)
-# risk_model = DifferentialEntropyRiskModel(preference_prior)
-risk_model = MonteCarloRiskModel(preference_prior)
+risk_model = DifferentialEntropyRiskModel(preference_prior)
+# risk_model = MonteCarloRiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 
@@ -56,7 +56,7 @@ with pm.Model() as pm_model:  # this is a pymc model and in particular the "with
 
 p = Params(**samples.prior)
 
-omegas = np.arange(0, 2.0, 0.5)
+omegas = np.arange(0, 0.5, 0.05)
 outputs = []
 for w in omegas:
     print('Simulating with omega = {}\n'.format(w))

@@ -40,7 +40,7 @@ class EulerMaruyamaDynamics:
                       params.k,
                       params.qE
             )
-            Bs_step = Bs + rhs * self.dt + np.random.normal(0, self.D * self.dt, Bs.shape)
+            Bs_step = Bs + rhs * self.dt + Bs * self.D * np.random.normal(0, self.dt, Bs.shape)
             Bs = np.maximum(0, Bs_step)
             Bs = np.minimum(self.max_b, Bs)
             observed.append(Bs)
@@ -86,8 +86,8 @@ class ProfitMaximizingPolicy(Policy):
         # set Es to 0 if B vanishes
         Es = np.where(params.B > 0, 1 - (coef * Bp) ** inv_gamma_power, 0.)
         Es = np.minimum(1, np.maximum(Es, 0.))
-        if (Es == 0.).any():
-            warnings.warn("Optimal extraction rate qE = 0.")
+        if jnp.logical_and(Es == 0., Bp >= 0.).any():
+            warnings.warn("Optimal extraction rate qE = 0 but Bp > 0.")
         return Es
 
 
@@ -157,7 +157,10 @@ class RiskModel:
 
 class DifferentialEntropyRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
-        return entr(Lt)
+        ent = entr(Lt)
+        if ent == -float('inf'):
+            ent = 0
+        return ent
 
 
 class MonteCarloRiskModel(RiskModel):
@@ -236,7 +239,7 @@ class Model:
         Rt_sim = 0.
         for t_plan in range(self.horizon):
             t = t_sim + t_plan
-            Lt, Lt_logprob, Vt, Bt, params = self.timestep(t, params)
+            Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params)
             Gt = self.risk_model(Lt, Lt_logprob, Vt)
             Rt_sim += Gt
         print('\nend plan\n')
@@ -262,6 +265,7 @@ class Model:
         rts = []
         for t_sim in range(self.horizon):
             es.append(self.params.qE)
+            # behaviour of agent is myopic in that it doesn't care about planning risk
             _, _, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
             sim_params = self.get_sim_params()
             Rt_sim = self.plan(t_sim, sim_params)
