@@ -6,7 +6,7 @@ from sim.utils import Params, JaxRKey
 from sim.models import EulerMaruyamaDynamics, \
     RevenueModel, CostModel, RiskMitigationPolicy, \
     ProfitMaximizingPolicy, \
-    LossModel, NoisyLossModel, SoftmaxPreferencePrior, \
+    LossModel, NoisyLossModel, SigmoidPreferencePrior, \
     UniformPreferencePrior, DifferentialEntropyRiskModel, \
     MonteCarloRiskModel, Model
 from sim.plotting import plot_outputs
@@ -36,9 +36,9 @@ revenue_model = RevenueModel(P0=P0, rho=rho)
 cost_model = CostModel(C0=C0, gamma=gamma)
 # policy = RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
 policy = ProfitMaximizingPolicy(revenue_model, cost_model)
-loss_model = LossModel()
-# loss_model = NoisyLossModel(jax_rkey, loss_scale)
-preference_prior = SoftmaxPreferencePrior(l_bar)
+# loss_model = LossModel()
+loss_model = NoisyLossModel(jax_rkey, loss_scale)
+preference_prior = SigmoidPreferencePrior(l_bar)
 # preference_prior = UniformPreferencePrior(l_bar)
 risk_model = DifferentialEntropyRiskModel(preference_prior)
 # risk_model = MonteCarloRiskModel(preference_prior)

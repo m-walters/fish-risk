@@ -129,7 +129,7 @@ class PreferencePrior:
         self.l_bar = l_bar
 
 
-class SoftmaxPreferencePrior(PreferencePrior):
+class SigmoidPreferencePrior(PreferencePrior):
     def __call__(self, Lt):
         return jax.nn.sigmoid(self.l_bar - Lt)
 
@@ -150,22 +150,23 @@ class RiskModel:
         # this printing is important for evolving the preference model
         sample_mean = jnp.log(self.preference_prior(Lt)).mean(axis=0)
         entropy = self.compute_entropy(Lt, Lt_logprob, Vt)
-        Gt = entropy - sample_mean
-        print("entropy {} - sample_mean {} = RISK: {}".format(entropy, sample_mean, Gt))
+        Gt = -entropy - sample_mean
+        print("-entropy {} - sample_mean {} = RISK: {}".format(-entropy, sample_mean, Gt))
         return Gt
 
 
 class DifferentialEntropyRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
         ent = entr(Lt)
-        if ent == -float('inf') or True:
-            ent = 0
+        if ent == float('-inf'):
+            warnings.warn("entropy = -inf")
+            ent = -10
         return ent
 
 
 class MonteCarloRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
-        return Lt_logprob.mean(axis=0)
+        return -Lt_logprob.mean(axis=0)
 
 
 class Model:
