@@ -131,7 +131,7 @@ class PreferencePrior:
 
 class SoftmaxPreferencePrior(PreferencePrior):
     def __call__(self, Lt):
-        return jax.nn.softmax(self.l_bar - Lt, axis=0)
+        return jax.nn.sigmoid(self.l_bar - Lt)
 
 
 class UniformPreferencePrior(PreferencePrior):
@@ -158,7 +158,7 @@ class RiskModel:
 class DifferentialEntropyRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
         ent = entr(Lt)
-        if ent == -float('inf'):
+        if ent == -float('inf') or True:
             ent = 0
         return ent
 
