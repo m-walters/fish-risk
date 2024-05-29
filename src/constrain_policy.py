@@ -37,12 +37,12 @@ revenue_model = models.RevenueModel(P0=P0, rho=rho)
 cost_model = models.CostModel(C0=C0, gamma=gamma)
 # policy = models.RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
 policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
-loss_model = models.LossModel()
-# loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
-preference_prior = models.ExponentialPreferencePrior(l_bar, 0.4, 1.0)
-# preference_prior = models.UniformPreferencePrior(l_bar)
+# loss_model = models.LossModel()
+loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
+# preference_prior = models.ExponentialPreferencePrior(l_bar, 0.4, 1.0)
+preference_prior = models.SigmoidPreferencePrior(l_bar)
 # risk_model = models.RiskModel(preference_prior)
-risk_model = models.MonteCarloRiskModel(preference_prior)
+risk_model = models.DifferentialEntropyRiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 

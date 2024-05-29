@@ -279,10 +279,8 @@ class Model:
         Bs = jnp.vstack([np.array(p.B) for p in params])
         ws = jnp.vstack([self.omega_scale * np.ones(self.params.w.shape) for p in params])
         # ws = jnp.vstack([jax.random.lognormal(self.jax_rkey.next_seed(), shape=self.params.w.shape) for p in params])
-        rs = jnp.vstack([0.2 * np.ones(self.params.w.shape) for p in params])
-        # rs = jnp.vstack([np.array(p.r) for p in params])
-        ks = jnp.vstack([200 * np.ones(self.params.w.shape) for p in params])
-        # ks = jnp.vstack([np.array(p.k) for p in params])
+        rs = jnp.vstack([np.array(p.r) for p in params])
+        ks = jnp.vstack([np.array(p.k) for p in params])
         qEs = jnp.vstack([np.array(p.qE) for p in params])
         return Params(Bs, ws, rs, ks, qEs)
 
