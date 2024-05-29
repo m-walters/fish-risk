@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import differential_entropy as entr
 
-from sim.utils import Params, Output
+from sim.utils import Params, Output, JaxRKey, JaxGaussian
 
 import warnings
 
@@ -39,7 +39,7 @@ class EulerMaruyamaDynamics:
                       params.k,
                       params.qE
             )
-            Bs_step = Bs + rhs * self.dt + np.random.normal(0, self.D * self.dt, Bs.shape)
+            Bs_step = Bs + rhs * self.dt + Bs * self.D * np.random.normal(0, self.dt, Bs.shape)
             Bs = np.maximum(0, Bs_step)
             Bs = np.minimum(self.max_b, Bs)
             observed.append(Bs)
@@ -85,8 +85,8 @@ class ProfitMaximizingPolicy(Policy):
         # set Es to 0 if B vanishes
         Es = np.where(params.B > 0, 1 - (coef * Bp) ** inv_gamma_power, 0.)
         Es = np.minimum(1, np.maximum(Es, 0.))
-        if (Es == 0.).any():
-            warnings.warn("Optimal extraction rate qE = 0.")
+        if jnp.logical_and(Es == 0., Bp >= 0.).any():
+            warnings.warn("Optimal extraction rate qE = 0 but Bp > 0.")
         return Es
 
 
@@ -107,7 +107,20 @@ class RiskMitigationPolicy(Policy):
 class LossModel:
     def __call__(self, V_t, t, omega):
         loss = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
-        return loss
+        return loss, float('inf')
+
+
+class NoisyLossModel(LossModel):
+    def __init__(self, jax_rkey: JaxRKey, scale: float):
+        self.jax_rkey = jax_rkey
+        self.scale = scale
+
+    def __call__(self, V_t, t, omega):
+        loss, _ = super(NoisyLossModel, self).__call__(V_t, t, omega)
+        key = self.jax_rkey.next_seed()
+        jax_loss = jnp.asarray(loss)
+        rloss, log_probs = JaxGaussian.sample(key, jax_loss, self.scale)
+        return rloss, log_probs
 
 
 class PreferencePrior:
@@ -115,9 +128,9 @@ class PreferencePrior:
         self.l_bar = l_bar
 
 
-class SoftmaxPreferencePrior(PreferencePrior):
+class SigmoidPreferencePrior(PreferencePrior):
     def __call__(self, Lt):
-        return jax.nn.softmax(self.l_bar - Lt, axis=0)
+        return jax.nn.sigmoid(self.l_bar - Lt)
 
 
 class UniformPreferencePrior(PreferencePrior):
@@ -129,13 +142,30 @@ class RiskModel:
     def __init__(self, preference_prior):
         self.preference_prior = preference_prior
 
-    def __call__(self, Lt, Vt):
+    def compute_entropy(self, Lt, Lt_logprob, Vt):
+        raise NotImplementedError
+
+    def __call__(self, Lt, Lt_logprob, Vt):
         # this printing is important for evolving the preference model
         sample_mean = jnp.log(self.preference_prior(Lt)).mean(axis=0)
-        entropy = entr(Lt, axis=0)
-        Gt = entropy - sample_mean
-        print("sample_mean {} - entropy {} = RISK: {}".format(sample_mean, entropy, Gt))
+        entropy = self.compute_entropy(Lt, Lt_logprob, Vt)
+        Gt = -entropy - sample_mean
+        print("-entropy {} - sample_mean {} = RISK: {}".format(-entropy, sample_mean, Gt))
         return Gt
+
+
+class DifferentialEntropyRiskModel(RiskModel):
+    def compute_entropy(self, Lt, Lt_logprob, Vt):
+        ent = entr(Lt)
+        if ent == float('-inf'):
+            warnings.warn("entropy = -inf")
+            ent = -10
+        return ent
+
+
+class MonteCarloRiskModel(RiskModel):
+    def compute_entropy(self, Lt, Lt_logprob, Vt):
+        return -Lt_logprob.mean(axis=0)
 
 
 class Model:
@@ -155,6 +185,7 @@ class Model:
         cost_model,
         loss_model,
         risk_model,
+        jax_rkey,
         debug=False,
         omega_scale=1,
     ):
@@ -167,6 +198,7 @@ class Model:
         self.cost_model = cost_model
         self.loss_model = loss_model
         self.risk_model = risk_model
+        self.jax_rkey = jax_rkey
         self.debug = debug
         self.omega_scale = omega_scale
 
@@ -195,7 +227,7 @@ class Model:
         Ct = self.cost_model(params.qE)
         Vt = Revt - Ct
         Vt = jnp.nan_to_num(np.array(Vt), copy=False)
-        Lt = self.loss_model(Vt, t, params.w)
+        Lt, Lt_logprob = self.loss_model(Vt, t, params.w)
 
         # update params with new fish biomass
         params = Params(
@@ -206,14 +238,14 @@ class Model:
             qE=params.qE
         )
 
-        return Lt, Vt, Bt, params
+        return Lt, Lt_logprob, Vt, Bt, params
 
     def plan(self, t_sim, params):
         Rt_sim = 0.
         for t_plan in range(self.real_horizon):
             t = t_sim + t_plan
-            Lt, Vt, Bt, params = self.timestep(t, params)
-            Gt = self.risk_model(Lt, Vt)
+            Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params)
+            Gt = self.risk_model(Lt, Lt_logprob, Vt)
             Rt_sim += Gt
         print('\nend plan\n')
         return Rt_sim
@@ -221,6 +253,7 @@ class Model:
     def stack_params(self, params: list) -> Params:
         Bs = jnp.vstack([np.array(p.B) for p in params])
         ws = jnp.vstack([self.omega_scale * np.ones(self.params.w.shape) for p in params])
+        # ws = jnp.vstack([jax.random.lognormal(self.jax_rkey.next_seed(), shape=self.params.w.shape) for p in params])
         rs = jnp.vstack([np.array(p.r) for p in params])
         ks = jnp.vstack([np.array(p.k) for p in params])
         qEs = jnp.vstack([np.array(p.qE) for p in params])
@@ -237,7 +270,8 @@ class Model:
         rts = []
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
-            Lt_sim, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
+            # behaviour of agent is myopic in that it doesn't care about planning risk
+            _, _, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
             sim_params = self.get_sim_params()
             Rt_sim = self.plan(t_sim, sim_params)
             bs.append(Bt_sim)

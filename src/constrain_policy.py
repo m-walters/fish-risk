@@ -2,9 +2,9 @@
 
 import pymc as pm
 import numpy as np
-from sim.utils import Params
+from sim import utils
 from sim import models
-from sim.plotting import plot_outputs
+from sim import plotting
 
 # Sim params
 # > Horizon and num steps for the model's inner simulation of the future
@@ -14,26 +14,32 @@ D = 100  # Inner sim brownian motion diffusion
 n_montecarlo = 100
 real_horizon = 20  # Realworld horizon steps
 
-# Model params
 P0 = 1.2  # Profit
-rho = -0.9  # Profit
+rho = -0.8  # Profit
 C0 = 1.2  # Cost
-gamma = -0.9  # Cost
+gamma = -0.5  # Cost
+
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
-l_bar = P0 * B_max ** (1 + rho)
+l_bar = 0. #P0 * B_max ** (1 + rho)
+loss_scale = 0.1
 
 lmbdas = np.linspace(0., 1000., 100)
+
+seed = 1234
+jax_rkey = utils.JaxRKey(seed)
 
 dynamics = models.EulerMaruyamaDynamics(inner_horizon, inner_steps, D, B_max)
 revenue_model = models.RevenueModel(P0=P0, rho=rho)
 cost_model = models.CostModel(C0=C0, gamma=gamma)
 # policy = models.RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
 policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
-loss_model = models.LossModel()
-preference_prior = models.SoftmaxPreferencePrior(l_bar)
+# loss_model = models.LossModel()
+loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
+preference_prior = models.SigmoidPreferencePrior(l_bar)
 # preference_prior = models.UniformPreferencePrior(l_bar)
 risk_model = models.RiskModel(preference_prior)
+# risk_model = models.MonteCarloRiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 
@@ -46,9 +52,9 @@ with pm.Model() as pm_model:  # this is a pymc model and in particular the "with
 
     samples = pm.sample_prior_predictive(samples=NUM_PARAM_BATCHES)
 
-p = Params(**samples.prior)
+p = utils.Params(**samples.prior)
 
-omegas = np.arange(0, 4.0, 0.5)
+omegas = np.arange(0, 0.5, 0.05)
 outputs = []
 for w in omegas:
     print('Simulating with omega = {}\n'.format(w))
@@ -62,10 +68,11 @@ for w in omegas:
         cost_model,
         loss_model,
         risk_model,
+        jax_rkey,
         debug=False,
         omega_scale=w,
     )
     output = experimental_model()
     outputs.append(output)
 
-plot_outputs(outputs, omegas)
+plotting.plot_outputs(outputs, omegas)
