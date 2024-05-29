@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 
 import pymc as pm
-import numpy as np
-from sim.utils import Params
-from sim.models import EulerMaruyamaDynamics, \
-    RevenueModel, CostModel, ProfitMaximizingPolicy, \
-    LossModel, SoftmaxPreferencePrior, RiskModel, Model, \
-    EvolvedPreferenceModel
 
+from sim import models, utils
+from sim.utils import Params
 
 sim_horizon = 100
 sim_steps = 20
@@ -22,13 +18,13 @@ gamma = -0.9
 B_max = 50000
 l_bar = P0 * B_max ** rho
 
-dynamics = EulerMaruyamaDynamics(sim_horizon, sim_steps, D, B_max)
-revenue_model = RevenueModel(P0=P0, rho=rho)
-cost_model = CostModel(C0=C0, gamma=gamma)
-policy = ProfitMaximizingPolicy(revenue_model, cost_model)
-loss_model = LossModel()
-preference_prior = SoftmaxPreferencePrior(l_bar)
-risk_model = RiskModel(preference_prior)
+dynamics = models.EulerMaruyamaDynamics(sim_horizon, sim_steps, D, B_max)
+revenue_model = models.RevenueModel(P0=P0, rho=rho)
+cost_model = models.CostModel(C0=C0, gamma=gamma)
+policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
+loss_model = models.LossModel()
+preference_prior = models.SoftmaxPreferencePrior(l_bar)
+risk_model = models.RiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 10
 
@@ -41,7 +37,7 @@ with pm.Model() as pm_model:  # this is a pymc model and in particular the "with
 
     samples = pm.sample_prior_predictive(samples=NUM_PARAM_BATCHES)
 
-p = Params(**samples.prior)
+p = utils.Params(**samples.prior)
 
 # mu = 1.
 # for experimental_st_dev in np.arange(0.2, 2.0, 0.2):

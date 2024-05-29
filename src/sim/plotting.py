@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-from matplotlib.pyplot import cm
 import numpy as np
+from matplotlib.pyplot import cm
 
 
 def plot_outputs(outputs, omegas):
@@ -31,6 +30,7 @@ def plot_outputs(outputs, omegas):
     )
 
     plt.savefig('../results/fish_sim.pdf')
+
 
 def plot_data(output, omega, color, axs):
     time = np.arange(len(output.Rts))

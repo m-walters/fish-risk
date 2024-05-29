@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import pymc as pm
-import numpy as np
-from sim import utils
-from sim import models
-from sim import plotting
 import logging
+
+import numpy as np
+import pymc as pm
+
+from sim import models, plotting, utils
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,7 +24,7 @@ gamma = -0.5  # Cost
 
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
-l_bar = 0. #P0 * B_max ** (1 + rho)
+l_bar = 0.  # P0 * B_max ** (1 + rho)
 loss_scale = 0.1
 
 lmbdas = np.linspace(0., 1000., 100)

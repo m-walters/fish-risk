@@ -1,3 +1,5 @@
+import logging
+import warnings
 from copy import copy
 
 import jax
@@ -5,13 +7,10 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import differential_entropy as entr
 
-from sim.utils import Params, Output, JaxRKey, JaxGaussian
-
-import warnings
-
-import logging
+from sim.utils import JaxGaussian, JaxRKey, Output, Params
 
 logger = logging.getLogger(__name__)
+
 
 class EulerMaruyamaDynamics:
     """
@@ -28,7 +27,7 @@ class EulerMaruyamaDynamics:
         Will be passed into DifferentialEquation
         p is our parameter tuple (r, k, qE)
         """
-        return rs*Bs - rs*Bs*Bs/ks - qEs*Bs
+        return rs * Bs - rs * Bs * Bs / ks - qEs * Bs
 
     def __call__(self, params: Params) -> list:
         # Generate sample data
