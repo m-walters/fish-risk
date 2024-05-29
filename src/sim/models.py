@@ -224,6 +224,10 @@ class Model:
         self.debug = debug
         self.omega_scale = omega_scale
 
+        # Can override logger
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+
     def print(self, out: str, force: bool = False):
         if self.debug or force:
             print(out)
