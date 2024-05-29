@@ -5,6 +5,9 @@ import numpy as np
 from sim import utils
 from sim import models
 from sim import plotting
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # Sim params
 # > Horizon and num steps for the model's inner simulation of the future
@@ -34,12 +37,12 @@ revenue_model = models.RevenueModel(P0=P0, rho=rho)
 cost_model = models.CostModel(C0=C0, gamma=gamma)
 # policy = models.RiskMitigationPolicy(revenue_model, cost_model, lmbda=0.1)
 policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
-# loss_model = models.LossModel()
-loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
-preference_prior = models.SigmoidPreferencePrior(l_bar)
+loss_model = models.LossModel()
+# loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
+preference_prior = models.ExponentialPreferencePrior(l_bar, 0.4, 1.0)
 # preference_prior = models.UniformPreferencePrior(l_bar)
-risk_model = models.RiskModel(preference_prior)
-# risk_model = models.MonteCarloRiskModel(preference_prior)
+# risk_model = models.RiskModel(preference_prior)
+risk_model = models.MonteCarloRiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 
@@ -63,6 +66,7 @@ for w in omegas:
         n_montecarlo,
         dynamics,
         real_horizon,
+        inner_horizon,
         policy,
         revenue_model,
         cost_model,
