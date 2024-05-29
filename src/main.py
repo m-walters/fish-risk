@@ -9,8 +9,8 @@ from sim.models import EulerMaruyamaDynamics, \
     EvolvedPreferenceModel
 
 
-t_end = 100
-num_points = 20
+sim_horizon = 100
+sim_steps = 20
 D = 1000
 mc = 10
 horizon = 20
@@ -22,7 +22,7 @@ gamma = -0.9
 B_max = 50000
 l_bar = P0 * B_max ** rho
 
-dynamics = EulerMaruyamaDynamics(t_end, num_points, D, B_max)
+dynamics = EulerMaruyamaDynamics(sim_horizon, sim_steps, D, B_max)
 revenue_model = RevenueModel(P0=P0, rho=rho)
 cost_model = CostModel(C0=C0, gamma=gamma)
 policy = ProfitMaximizingPolicy(revenue_model, cost_model)
