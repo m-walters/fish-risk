@@ -177,7 +177,9 @@ class RiskModel:
 class DifferentialEntropyRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
         ent = entr(Lt)
-        ent = np.where(ent == -float('inf'), -10, ent)
+        if np.any(ent == float('-inf')):
+            warnings.warn("-inf encountered in entropy")
+            ent = np.where(ent == -float('inf'), -10, ent)
         return ent
 
 
