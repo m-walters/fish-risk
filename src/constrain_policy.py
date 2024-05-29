@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
-import pymc as pm
+import logging
+
 import numpy as np
-from sim import utils
-from sim import models
-from sim import plotting
+import pymc as pm
+
+from sim import models, plotting, utils
+
+logging.basicConfig(level=logging.INFO)
 
 # Sim params
 # > Horizon and num steps for the model's inner simulation of the future
@@ -21,7 +24,7 @@ gamma = -0.5  # Cost
 
 # maximum loss occurs when cost = 0, revenue = P0 * B_max ** (1 + rho)
 B_max = 100000
-l_bar = 0. #P0 * B_max ** (1 + rho)
+l_bar = 0.  # P0 * B_max ** (1 + rho)
 loss_scale = 0.1
 
 lmbdas = np.linspace(0., 1000., 100)
@@ -36,10 +39,10 @@ cost_model = models.CostModel(C0=C0, gamma=gamma)
 policy = models.ProfitMaximizingPolicy(revenue_model, cost_model)
 # loss_model = models.LossModel()
 loss_model = models.NoisyLossModel(jax_rkey, loss_scale)
+# preference_prior = models.ExponentialPreferencePrior(l_bar, 0.4, 1.0)
 preference_prior = models.SigmoidPreferencePrior(l_bar)
-# preference_prior = models.UniformPreferencePrior(l_bar)
-risk_model = models.RiskModel(preference_prior)
-# risk_model = models.MonteCarloRiskModel(preference_prior)
+# risk_model = models.RiskModel(preference_prior)
+risk_model = models.DifferentialEntropyRiskModel(preference_prior)
 
 NUM_PARAM_BATCHES = 1
 
@@ -63,6 +66,7 @@ for w in omegas:
         n_montecarlo,
         dynamics,
         real_horizon,
+        inner_horizon,
         policy,
         revenue_model,
         cost_model,

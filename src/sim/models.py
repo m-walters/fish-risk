@@ -1,3 +1,5 @@
+import logging
+import warnings
 from copy import copy
 
 import jax
@@ -5,27 +7,28 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import differential_entropy as entr
 
-from sim.utils import Params, Output, JaxRKey, JaxGaussian
+from sim.utils import JaxGaussian, JaxRKey, Output, Params
 
 import warnings
+logger = logging.getLogger(__name__)
 
 
 class EulerMaruyamaDynamics:
     """
     Runs evolution of the fish population via the ODE
     """
-    def __init__(self, sim_horizon: int, sim_steps: int, D: float, max_b: float):
-        self.time_points = jnp.linspace(0., sim_horizon, sim_steps)
-        self.dt = 1 / sim_steps
+    def __init__(self, t_end: int, num_points: int, D: float, max_b: float):
+        self.time_points = jnp.linspace(0., t_end, num_points)
+        self.dt = t_end / num_points
         self.D = D  # diffusion coefficient
         self.max_b = max_b
 
-    def rhs_pymcode(self, Bs, rs, ks, qEs) -> list:
+    def rhs_pymcode(self, Bs: np.ndarray, rs: np.ndarray, ks: np.ndarray, qEs: np.ndarray) -> np.ndarray:
         """
         Will be passed into DifferentialEquation
         p is our parameter tuple (r, k, qE)
         """
-        return rs*Bs - rs*Bs*Bs/ks - qEs*Bs
+        return rs * Bs - rs * Bs * Bs / ks - qEs * Bs
 
     def __call__(self, params: Params) -> list:
         # Generate sample data
@@ -34,13 +37,13 @@ class EulerMaruyamaDynamics:
         observed.append(Bs)
         for t in self.time_points:
             rhs = self.rhs_pymcode(
-                      Bs,
-                      params.r,
-                      params.k,
-                      params.qE
+                Bs,
+                params.r,
+                params.k,
+                params.qE
             )
             Bs_step = Bs + rhs * self.dt + Bs * self.D * np.random.normal(0, self.dt, Bs.shape)
-            Bs = np.maximum(0, Bs_step)
+            Bs = np.maximum(1, Bs_step)  # Life finds a way
             Bs = np.minimum(self.max_b, Bs)
             observed.append(Bs)
         return observed
@@ -52,9 +55,8 @@ class RevenueModel:
         self.rho = rho
 
     def __call__(self, B, qE):
-        C = np.where(B > 0, B, 1.)  # set those entries in B that vanish to 1. arbitrarily
-        PB = np.where(B > 0, self.P0 * C ** self.rho, 0.)  # those entries where C is 1 are 0. in PB
-        return PB * qE * B
+        market_price = self.P0 * B ** self.rho
+        return market_price * qE * B
 
 
 class CostModel:
@@ -106,8 +108,14 @@ class RiskMitigationPolicy(Policy):
 
 class LossModel:
     def __call__(self, V_t, t, omega):
+        """
+        :param V_t: Net profit (revenue - cost) at time t
+        :param t: Future time step
+        :param omega: Discount factor
+        """
         loss = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
-        return loss, float('inf')
+        # loss = (-1 / (1 + omega) ** t) * V_t
+        return loss, jnp.zeros(loss.shape)
 
 
 class NoisyLossModel(LossModel):
@@ -133,6 +141,19 @@ class SigmoidPreferencePrior(PreferencePrior):
         return jax.nn.sigmoid(self.l_bar - Lt)
 
 
+class ExponentialPreferencePrior(PreferencePrior):
+    """
+    k is an empirical constant related to stakeholder loss aversion
+    k = -ln(p*)/L* where p* is the stakeholder's probability that loss will surpass L*
+    """
+    def __init__(self, l_bar: float, p_star: float, L_star: float):
+        super().__init__(l_bar)
+        self.k = -jnp.log(p_star) / L_star
+
+    def __call__(self, Lt):
+        return self.k * jnp.exp(-self.k * Lt)
+
+
 class UniformPreferencePrior(PreferencePrior):
     def __call__(self, Lt):
         return np.ones(Lt.shape) / self.l_bar
@@ -149,23 +170,22 @@ class RiskModel:
         # this printing is important for evolving the preference model
         sample_mean = jnp.log(self.preference_prior(Lt)).mean(axis=0)
         entropy = self.compute_entropy(Lt, Lt_logprob, Vt)
-        Gt = -entropy - sample_mean
-        print("-entropy {} - sample_mean {} = RISK: {}".format(-entropy, sample_mean, Gt))
-        return Gt
+        Gt = - entropy - sample_mean
+        return Gt, entropy, sample_mean
 
 
 class DifferentialEntropyRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
         ent = entr(Lt)
-        if ent == float('-inf'):
-            warnings.warn("entropy = -inf")
-            ent = -10
+        if np.any(ent == float('-inf')):
+            warnings.warn("-inf encountered in entropy")
+            ent = np.where(ent == -float('inf'), -10, ent)
         return ent
 
 
 class MonteCarloRiskModel(RiskModel):
     def compute_entropy(self, Lt, Lt_logprob, Vt):
-        return -Lt_logprob.mean(axis=0)
+        return Lt_logprob.mean(axis=0)
 
 
 class Model:
@@ -180,6 +200,7 @@ class Model:
         n_montecarlo,
         dynamics,
         real_horizon,
+        inner_horizon,
         policy,
         revenue_model,
         cost_model,
@@ -193,6 +214,7 @@ class Model:
         self.n_montecarlo = n_montecarlo
         self.dynamics = dynamics
         self.real_horizon = real_horizon
+        self.inner_horizon = inner_horizon
         self.policy = policy
         self.revenue_model = revenue_model
         self.cost_model = cost_model
@@ -218,6 +240,11 @@ class Model:
         return new_params
 
     def timestep(self, t: int, old_params: Params):
+        """
+        Shapes of variables (like Bt, Ct, ...) will be
+        (m, NUM_PARAM_BATCHES)
+        where m is either 1 for the "real" timestep or n_montecarlo for planning
+        """
         params = self.sample_policy(old_params)
         observed = self.dynamics(params)
         Bt = observed[-1]
@@ -226,7 +253,7 @@ class Model:
             Revt = self.revenue_model(Bt, params.qE)
         Ct = self.cost_model(params.qE)
         Vt = Revt - Ct
-        Vt = jnp.nan_to_num(np.array(Vt), copy=False)
+        Vt = jnp.nan_to_num(np.array(Vt), copy=False, nan=0.)
         Lt, Lt_logprob = self.loss_model(Vt, t, params.w)
 
         # update params with new fish biomass
@@ -240,14 +267,14 @@ class Model:
 
         return Lt, Lt_logprob, Vt, Bt, params
 
-    def plan(self, t_sim, params):
+    def plan(self, params):
         Rt_sim = 0.
-        for t_plan in range(self.real_horizon):
-            t = t_sim + t_plan
+        for t_plan in range(self.inner_horizon):
             Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params)
-            Gt = self.risk_model(Lt, Lt_logprob, Vt)
+            Gt, entropy, sample_mean = self.risk_model(Lt, Lt_logprob, Vt)
             Rt_sim += Gt
-        print('\nend plan\n')
+        logger.debug("plan last: -entropy {} | -sample_mean {} | risk {}".format(-entropy, -sample_mean, Gt))
+
         return Rt_sim
 
     def stack_params(self, params: list) -> Params:
@@ -259,7 +286,12 @@ class Model:
         qEs = jnp.vstack([np.array(p.qE) for p in params])
         return Params(Bs, ws, rs, ks, qEs)
 
-    def get_sim_params(self):
+    def get_montecarlo_params(self):
+        """
+        Return a replicated stack of current params for running MC predictive simulations
+        Returned object is a Params object where each param is an n_montecarlo x NUM_PARAM_BATCHES size
+        The params are identical across n_montecarlo dimension, but differ across NUM_PARAM_BATCHES dimension
+        """
         param_list = [copy(self.params) for _ in range(self.n_montecarlo)]
         return self.stack_params(param_list)
 
@@ -271,9 +303,9 @@ class Model:
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
             # behaviour of agent is myopic in that it doesn't care about planning risk
-            _, _, Vt_sim, Bt_sim, self.params = self.timestep(t_sim, self.params)
-            sim_params = self.get_sim_params()
-            Rt_sim = self.plan(t_sim, sim_params)
+            _, _, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            sim_params = self.get_montecarlo_params()
+            Rt_sim = self.plan(sim_params)
             bs.append(Bt_sim)
             vs.append(Vt_sim)
             rts.append(Rt_sim)

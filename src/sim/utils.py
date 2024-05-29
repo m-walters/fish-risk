@@ -1,9 +1,9 @@
 from collections import namedtuple
+
+import jax
+import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
-import jax.numpy as jnp
-import jax
-
 
 Params = namedtuple('Params', 'B, w, r, k, qE')
 
@@ -12,6 +12,7 @@ class JaxRKey:
     """
     Helper class for seeding RNG with Jax
     """
+
     def __init__(self, seed):
         self.key = jrandom.PRNGKey(seed)
 
