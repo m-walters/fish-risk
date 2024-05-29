@@ -9,6 +9,7 @@ from scipy.stats import differential_entropy as entr
 
 from sim.utils import JaxGaussian, JaxRKey, Output, Params
 
+import warnings
 logger = logging.getLogger(__name__)
 
 
@@ -112,8 +113,8 @@ class LossModel:
         :param t: Future time step
         :param omega: Discount factor
         """
-        # loss = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
-        loss = (-1 / (1 + omega) ** t) * V_t
+        loss = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
+        # loss = (-1 / (1 + omega) ** t) * V_t
         return loss, jnp.zeros(loss.shape)
 
 
