@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
+import xarray as xr
 
 Params = namedtuple('Params', 'B, w, r, k, qE')
 
@@ -62,3 +63,61 @@ class Output:
 
     def plot(self):
         pass
+
+
+class OmegaResults:
+    """
+    Class for saving runs that iterate over omega
+    Outputs must have dimensions/coordinates [omega, time, param_batch]
+    """
+
+    def __init__(
+        self,
+        omegas: Union[np.ndarray, List[float]],
+        outputs: List[Output],
+        real_horizon: int,
+        num_param_batches: int,
+    ):
+        self.omegas = omegas
+        self.outputs = outputs
+        self.real_horizon = real_horizon
+        self.num_param_batches = num_param_batches
+
+    def to_dataset(self) -> xr.Dataset:
+        """
+        For runs with varying omega, generate the xArray Dataset
+        Outputs must have dimensions [omega, time, param_batch]
+        """
+        Es = [output.Es for output in self.outputs]
+        Bs = [output.Bs for output in self.outputs]
+        Vs = [output.Vs for output in self.outputs]
+        Rts = [output.Rts for output in self.outputs]
+
+        ds = xr.Dataset(
+            {
+                "E": (("omega", "time", "batch"), Es),
+                "B": (("omega", "time", "batch"), Bs),
+                "V": (("omega", "time", "batch"), Vs),
+                "Rt": (("omega", "time", "batch"), Rts),
+            },
+            coords={
+                "omega": self.omegas,
+                "time": np.arange(self.real_horizon),
+                "batch": np.arange(self.num_param_batches),
+            },
+        )
+        return ds
+
+    @classmethod
+    def save_ds(cls, ds: xr.Dataset, path):
+        """
+        Save an omega dataset to disk
+        """
+        ds.to_netcdf(path)
+
+    @classmethod
+    def load_ds(cls, path):
+        """
+        Load a saved dataset
+        """
+        return xr.open_dataset(path)

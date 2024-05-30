@@ -4,6 +4,11 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.pyplot import cm
 
+"""
+Note https://docs.xarray.dev/en/stable/user-guide/plotting.html
+for plotting with xarray objects
+"""
+
 
 def plot_outputs(outputs, omegas):
     color = iter(cm.rainbow(np.linspace(0, 1, len(omegas))))

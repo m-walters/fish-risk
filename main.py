@@ -3,6 +3,7 @@ import logging
 import hydra
 import numpy as np
 import pymc as pm
+import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
 from sim import models, plotting, utils
@@ -15,7 +16,6 @@ def main(cfg: DictConfig):
     """
     log_level = cfg.get("log_level", "INFO")
     if log_level == "DEBUG":
-        print(f"MW SETTING DEBUG")
         logging.basicConfig(level=logging.DEBUG)
     elif log_level == "INFO":
         logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,6 @@ def main(cfg: DictConfig):
     # Get logger *after* setting the level
     logger = logging.getLogger("main")
     # Print our config
-    logger.debug("TESTING DEBUG")
     logger.info(f"CONFIG\n{OmegaConf.to_yaml(cfg)}")
 
     dynamics = getattr(models, cfg.DE_dynamics.model)(**cfg.DE_dynamics, seed=cfg.seed)
@@ -83,6 +82,11 @@ def main(cfg: DictConfig):
         )
         output = experimental_model()
         outputs.append(output)
+
+    # Store the outputs from this run as xArray Dataset
+    omega_results = utils.OmegaResults(omegas, outputs, cfg.world_sim.real_horizon, cfg.run_params.num_param_batches)
+    ds = omega_results.to_dataset()
+    omega_results.save_ds(ds, "results/omegas_latest.nc")
 
     plotting.plot_outputs(outputs, omegas)
 
