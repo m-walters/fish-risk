@@ -108,15 +108,15 @@ class OmegaResults:
         )
         return ds
 
-    @classmethod
-    def save_ds(cls, ds: xr.Dataset, path):
+    @staticmethod
+    def save_ds(ds: xr.Dataset, path):
         """
         Save an omega dataset to disk
         """
         ds.to_netcdf(path)
 
-    @classmethod
-    def load_ds(cls, path):
+    @staticmethod
+    def load_ds(path):
         """
         Load a saved dataset
         """
