@@ -1,4 +1,5 @@
 from collections import namedtuple
+from typing import List, Union
 
 import jax
 import jax.numpy as jnp
@@ -6,6 +7,9 @@ import jax.random as jrandom
 import numpy as np
 
 Params = namedtuple('Params', 'B, w, r, k, qE')
+
+# For typing -- It's often hard to say if an object is one or the other
+Array = Union[jnp.ndarray, np.ndarray]
 
 
 class JaxRKey:
@@ -38,7 +42,19 @@ class JaxGaussian:
 
 
 class Output:
-    def __init__(self, Es, Bs, Vs, Rts):
+    def __init__(
+        self,
+        Es: List[Array],
+        Bs: List[Array],
+        Vs: List[Array],
+        Rts: List[Array],
+    ):
+        """
+        Outputs from the main world model sim.
+        Each variable is a list of length real_horizon,
+        and each element therein is an array of shape either (1, num_param_batches) or (num_param_batches).
+        The stored values become numpy ndarrays of shape [real_horizon, num_param_batches].
+        """
         self.Es = np.stack(Es).squeeze()
         self.Bs = np.stack(Bs).squeeze()
         self.Vs = np.stack(Vs).squeeze()
