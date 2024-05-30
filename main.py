@@ -1,12 +1,11 @@
-import pymc as pm
-
-from sim import models, utils, plotting
-import hydra
-from omegaconf import DictConfig, OmegaConf
 import logging
-import numpy as np
 
-logger = logging.getLogger("main")
+import hydra
+import numpy as np
+import pymc as pm
+from omegaconf import DictConfig, OmegaConf
+
+from sim import models, plotting, utils
 
 
 @hydra.main(version_base=None, config_path="configs")
@@ -16,13 +15,17 @@ def main(cfg: DictConfig):
     """
     log_level = cfg.get("log_level", "INFO")
     if log_level == "DEBUG":
+        print(f"MW SETTING DEBUG")
         logging.basicConfig(level=logging.DEBUG)
     elif log_level == "INFO":
         logging.basicConfig(level=logging.INFO)
     elif log_level == "WARNING":
         logging.basicConfig(level=logging.WARNING)
 
+    # Get logger *after* setting the level
+    logger = logging.getLogger("main")
     # Print our config
+    logger.debug("TESTING DEBUG")
     logger.info(f"CONFIG\n{OmegaConf.to_yaml(cfg)}")
 
     dynamics = getattr(models, cfg.DE_dynamics.model)(**cfg.DE_dynamics, seed=cfg.seed)
@@ -56,15 +59,16 @@ def main(cfg: DictConfig):
         print('Simulating with omega = {}\n'.format(w))
 
         p = utils.Params(
-            cfg.fish_params.B0 * np.ones((1,cfg.run_params.num_param_batches)),
-            w * np.ones((1,cfg.run_params.num_param_batches)),
-            cfg.fish_params.r * np.ones((1,cfg.run_params.num_param_batches)),
-            cfg.fish_params.k * np.ones((1,cfg.run_params.num_param_batches)),
+            cfg.fish_params.B0 * np.ones((1, cfg.run_params.num_param_batches)),
+            w * np.ones((1, cfg.run_params.num_param_batches)),
+            cfg.fish_params.r * np.ones((1, cfg.run_params.num_param_batches)),
+            cfg.fish_params.k * np.ones((1, cfg.run_params.num_param_batches)),
             **samples.prior
         )
 
         experimental_model = models.WorldModel(
             p,
+            cfg.run_params.num_param_batches,
             cfg.world_sim.n_montecarlo,
             cfg.world_sim.real_horizon,
             cfg.world_sim.plan_horizon,
@@ -79,7 +83,6 @@ def main(cfg: DictConfig):
         )
         output = experimental_model()
         outputs.append(output)
-
 
     plotting.plot_outputs(outputs, omegas)
 

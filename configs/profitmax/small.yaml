@@ -1,8 +1,8 @@
 # @package _global_
 # For a small profitmax run
-
 seed: 8675309
 name: profitmax_small
+log_level: DEBUG
 
 # fish params
 fish_params:
@@ -14,13 +14,13 @@ fish_params:
     upper: 0.8
 
 world_sim:
-  real_horizon: 40  # How long to run for
+  real_horizon: 20  # How long to run for
   plan_horizon: 40  # Planning horizon
-  n_montecarlo: 5
+  n_montecarlo: 100
 
 # Parameters outside the world sim
 run_params:
-  num_param_batches: 20
+  num_param_batches: 100
   omega:
     min: 0
     max: 0.3
