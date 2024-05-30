@@ -1,5 +1,6 @@
 import logging
 import warnings
+from abc import ABC
 from copy import copy
 
 import jax
@@ -9,15 +10,26 @@ from scipy.stats import differential_entropy as entr
 
 from sim.utils import JaxGaussian, JaxRKey, Output, Params
 
-import warnings
 logger = logging.getLogger(__name__)
 
 
-class EulerMaruyamaDynamics:
+class ModelBase(ABC):
+    """
+    Base class for our models
+    """
+
+    def __init__(self, *args, **kwargs):
+        # We leave kwargs open
+        self.key = JaxRKey(seed=kwargs.get("seed", 8675309))
+
+
+class EulerMaruyamaDynamics(ModelBase):
     """
     Runs evolution of the fish population via the ODE
     """
-    def __init__(self, t_end: int, num_points: int, D: float, max_b: float):
+
+    def __init__(self, t_end: int, num_points: int, D: float, max_b: float, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.time_points = jnp.linspace(0., t_end, num_points)
         self.dt = t_end / num_points
         self.D = D  # diffusion coefficient
@@ -49,8 +61,9 @@ class EulerMaruyamaDynamics:
         return observed
 
 
-class RevenueModel:
-    def __init__(self, P0: float, rho: float):
+class RevenueModel(ModelBase):
+    def __init__(self, P0: float, rho: float, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.P0 = P0
         self.rho = rho
 
@@ -59,8 +72,9 @@ class RevenueModel:
         return market_price * qE * B
 
 
-class CostModel:
-    def __init__(self, C0: float, gamma: float):
+class CostModel(ModelBase):
+    def __init__(self, C0: float, gamma: float, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.C0 = C0
         self.gamma = gamma
 
@@ -68,8 +82,9 @@ class CostModel:
         return self.C0 * (1 - qE) ** self.gamma
 
 
-class Policy:
-    def __init__(self, revenue_model: RevenueModel, cost_model: CostModel):
+class Policy(ModelBase):
+    def __init__(self, revenue_model: RevenueModel, cost_model: CostModel, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.revenue_model = revenue_model
         self.cost_model = cost_model
 
@@ -97,16 +112,18 @@ class RiskMitigationPolicy(Policy):
         self,
         revenue_model: RevenueModel,
         cost_model: CostModel,
-        lmbda: float
+        lmbda: float,
+        *args,
+        **kwargs
     ):
-        super().__init__(revenue_model, cost_model)
+        super().__init__(revenue_model, cost_model, *args, **kwargs)
         self.lmbda = lmbda
 
     def sample(self, params: Params):
         return 0.0
 
 
-class LossModel:
+class LossModel(ModelBase):
     def __call__(self, V_t, t, omega):
         """
         :param V_t: Net profit (revenue - cost) at time t
@@ -119,20 +136,21 @@ class LossModel:
 
 
 class NoisyLossModel(LossModel):
-    def __init__(self, jax_rkey: JaxRKey, scale: float):
-        self.jax_rkey = jax_rkey
+    def __init__(self, scale: float, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.scale = scale
 
     def __call__(self, V_t, t, omega):
         loss, _ = super(NoisyLossModel, self).__call__(V_t, t, omega)
-        key = self.jax_rkey.next_seed()
+        key = self.key.next_seed()
         jax_loss = jnp.asarray(loss)
         rloss, log_probs = JaxGaussian.sample(key, jax_loss, self.scale)
         return rloss, log_probs
 
 
-class PreferencePrior:
-    def __init__(self, l_bar: float):
+class PreferencePrior(ModelBase):
+    def __init__(self, l_bar: float, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.l_bar = l_bar
 
 
@@ -146,9 +164,10 @@ class ExponentialPreferencePrior(PreferencePrior):
     k is an empirical constant related to stakeholder loss aversion
     k = -ln(p*)/L* where p* is the stakeholder's probability that loss will surpass L*
     """
-    def __init__(self, l_bar: float, p_star: float, L_star: float):
+
+    def __init__(self, l_bar: float, p_star: float, l_star: float, *args, **kwargs):
         super().__init__(l_bar)
-        self.k = -jnp.log(p_star) / L_star
+        self.k = -jnp.log(p_star) / l_star
 
     def __call__(self, Lt):
         return self.k * jnp.exp(-self.k * Lt)
@@ -159,8 +178,9 @@ class UniformPreferencePrior(PreferencePrior):
         return np.ones(Lt.shape) / self.l_bar
 
 
-class RiskModel:
-    def __init__(self, preference_prior):
+class RiskModel(ModelBase):
+    def __init__(self, preference_prior, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.preference_prior = preference_prior
 
     def compute_entropy(self, Lt, Lt_logprob, Vt):
@@ -188,39 +208,42 @@ class MonteCarloRiskModel(RiskModel):
         return Lt_logprob.mean(axis=0)
 
 
-class Model:
+class WorldModel(ModelBase):
     """
     Main model that computes risk etc. through simulation of fishery evolution.
     Uses `n_montecarlo` MonteCarlo predictive simulations at a given realworld
     time step to calculate statistics.
     """
+
     def __init__(
         self,
         params,
         n_montecarlo,
-        dynamics,
         real_horizon,
-        inner_horizon,
+        plan_horizon,
+        dynamics,
         policy,
         revenue_model,
         cost_model,
         loss_model,
         risk_model,
-        jax_rkey,
         debug=False,
         omega_scale=1,
+        *args,
+        **kwargs
     ):
+        super().__init__(*args, **kwargs)
+
         self.params = params
         self.n_montecarlo = n_montecarlo
         self.dynamics = dynamics
         self.real_horizon = real_horizon
-        self.inner_horizon = inner_horizon
+        self.plan_horizon = plan_horizon
         self.policy = policy
         self.revenue_model = revenue_model
         self.cost_model = cost_model
         self.loss_model = loss_model
         self.risk_model = risk_model
-        self.jax_rkey = jax_rkey
         self.debug = debug
         self.omega_scale = omega_scale
 
@@ -246,7 +269,7 @@ class Model:
     def timestep(self, t: int, old_params: Params):
         """
         Shapes of variables (like Bt, Ct, ...) will be
-        (m, NUM_PARAM_BATCHES)
+        (m, num_param_batches)
         where m is either 1 for the "real" timestep or n_montecarlo for planning
         """
         params = self.sample_policy(old_params)
@@ -273,7 +296,7 @@ class Model:
 
     def plan(self, params):
         Rt_sim = 0.
-        for t_plan in range(self.inner_horizon):
+        for t_plan in range(self.plan_horizon):
             Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params)
             Gt, entropy, sample_mean = self.risk_model(Lt, Lt_logprob, Vt)
             Rt_sim += Gt
@@ -283,8 +306,8 @@ class Model:
 
     def stack_params(self, params: list) -> Params:
         Bs = jnp.vstack([np.array(p.B) for p in params])
-        ws = jnp.vstack([self.omega_scale * np.ones(self.params.w.shape) for p in params])
-        # ws = jnp.vstack([jax.random.lognormal(self.jax_rkey.next_seed(), shape=self.params.w.shape) for p in params])
+        # ws = jnp.vstack([jax.random.lognormal(self.key.next_seed(), shape=self.params.w.shape) for p in params])
+        ws = jnp.vstack([np.array(p.w) for p in params])
         rs = jnp.vstack([np.array(p.r) for p in params])
         ks = jnp.vstack([np.array(p.k) for p in params])
         qEs = jnp.vstack([np.array(p.qE) for p in params])
@@ -293,8 +316,8 @@ class Model:
     def get_montecarlo_params(self):
         """
         Return a replicated stack of current params for running MC predictive simulations
-        Returned object is a Params object where each param is an n_montecarlo x NUM_PARAM_BATCHES size
-        The params are identical across n_montecarlo dimension, but differ across NUM_PARAM_BATCHES dimension
+        Returned object is a Params object where each param is an n_montecarlo x num_param_batches size
+        The params are identical across n_montecarlo dimension, but differ across num_param_batches dimension
         """
         param_list = [copy(self.params) for _ in range(self.n_montecarlo)]
         return self.stack_params(param_list)

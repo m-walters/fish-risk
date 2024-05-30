@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.pyplot import cm
+import pandas as pd
+import seaborn as sns
 
 
 def plot_outputs(outputs, omegas):
@@ -29,12 +31,15 @@ def plot_outputs(outputs, omegas):
         ncol=len(omegas),
     )
 
-    plt.savefig('../results/fish_sim.pdf')
+    plt.savefig('results/fish_sim.pdf')
 
 
 def plot_data(output, omega, color, axs):
-    time = np.arange(len(output.Rts))
-    axs[0, 0].plot(time, output.Bs, color=color, label='w={:.1f}'.format(omega))
-    axs[0, 1].plot(time, output.Vs, color=color, label='w={:.1f}'.format(omega))
-    axs[1, 0].plot(time, output.Rts, color=color, label='w={:.1f}'.format(omega))
-    axs[1, 1].plot(time, output.Es, color=color, label='w={:.1f}'.format(omega))
+    df = pd.DataFrame(output.Bs).melt()
+    sns.lineplot(x="variable", y="value", data=df, color=color, label='w={:.1f}'.format(omega), ax=axs[0, 0], legend=False)
+    df = pd.DataFrame(output.Vs).melt()
+    sns.lineplot(x="variable", y="value", data=df, color=color, label='w={:.1f}'.format(omega), ax=axs[0, 1], legend=False)
+    df = pd.DataFrame(output.Rts).melt()
+    sns.lineplot(x="variable", y="value", data=df, color=color, label='w={:.1f}'.format(omega), ax=axs[1, 0], legend=False)
+    df = pd.DataFrame(output.Es).melt()
+    sns.lineplot(x="variable", y="value", data=df, color=color, label='w={:.1f}'.format(omega), ax=axs[1, 1], legend=False)
