@@ -1,9 +1,10 @@
 import logging
+import os
 
 import hydra
 import numpy as np
 import pymc as pm
-import pandas as pd
+from matplotlib import pyplot as plt
 from omegaconf import DictConfig, OmegaConf
 
 from sim import models, plotting, utils
@@ -53,6 +54,7 @@ def main(cfg: DictConfig):
         cfg.run_params.omega.max,
         cfg.run_params.omega.step
     )
+    omegas = np.round(omegas, 2)
     outputs = []
     for w in omegas:
         print('Simulating with omega = {}\n'.format(w))
@@ -86,9 +88,24 @@ def main(cfg: DictConfig):
     # Store the outputs from this run as xArray Dataset
     omega_results = utils.OmegaResults(omegas, outputs, cfg.world_sim.real_horizon, cfg.run_params.num_param_batches)
     ds = omega_results.to_dataset()
-    omega_results.save_ds(ds, "results/omegas_latest.nc")
+    # Automatically save latest
+    latest_dir = "results/latest"
+    os.makedirs(latest_dir, exist_ok=True)
+    OmegaConf.save(config=cfg, f=f"{latest_dir}/config.yaml")
+    omega_results.save_ds(ds, f"{latest_dir}/omegas_latest.nc")
 
-    plotting.plot_outputs(outputs, omegas)
+    # If a name is provided, save there too
+    if "name" in cfg:
+        save_dir: str = cfg.get("save_dir", "results")
+        run_dir: str = os.path.join(save_dir, cfg.name)
+        os.makedirs(run_dir, exist_ok=True)
+        omega_path = os.path.join(run_dir, "omega_results.nc")
+        omega_results.save_ds(ds, omega_path)
+
+    # Display a plot of results
+    plotter = plotting.Plotter(ds)
+    plotter.omega_quad_plot(save_path=f"{latest_dir}/omegas_latest.png")
+    plt.show()
 
 
 if __name__ == '__main__':
