@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 from sim import models, plotting, utils
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="base")
+@hydra.main(version_base=None, config_path="configs")
 def main(cfg: DictConfig):
     """
     Set the parameters and run the sim
