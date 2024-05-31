@@ -5,12 +5,12 @@ import hydra
 import numpy as np
 import pymc as pm
 from matplotlib import pyplot as plt
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, ListConfig
 
 from sim import models, plotting, utils
 
 
-@hydra.main(version_base=None, config_path="configs")
+@hydra.main(version_base=None, config_path="configs", config_name="base")
 def main(cfg: DictConfig):
     """
     Set the parameters and run the sim
@@ -49,12 +49,18 @@ def main(cfg: DictConfig):
         qE = pm.Uniform("qE", fish_params.qE.lower, fish_params.qE.upper)
         samples = pm.sample_prior_predictive(samples=cfg.run_params.num_param_batches)
 
-    omegas = np.arange(
-        cfg.run_params.omega.min,
-        cfg.run_params.omega.max,
-        cfg.run_params.omega.step
-    )
-    omegas = np.round(omegas, 2)
+    if isinstance(cfg.run_params.omega, ListConfig):
+        # Bespoke list of values
+        omegas = np.asarray(cfg.run_params.omega)
+    else:
+        # Linear spacing
+        omegas = np.arange(
+            cfg.run_params.omega.min,
+            cfg.run_params.omega.max,
+            cfg.run_params.omega.step
+        )
+        omegas = np.round(omegas, 2)
+
     outputs = []
     for w in omegas:
         print('Simulating with omega = {}\n'.format(w))
@@ -99,8 +105,8 @@ def main(cfg: DictConfig):
         save_dir: str = cfg.get("save_dir", "results")
         run_dir: str = os.path.join(save_dir, cfg.name)
         os.makedirs(run_dir, exist_ok=True)
-        omega_path = os.path.join(run_dir, "omega_results.nc")
-        omega_results.save_ds(ds, omega_path)
+        OmegaConf.save(config=cfg, f=f"{run_dir}/config.yaml")
+        omega_results.save_ds(ds, f"{run_dir}/omega_results.nc")
 
     # Display a plot of results
     plotter = plotting.Plotter(ds)
