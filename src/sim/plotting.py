@@ -68,6 +68,9 @@ class Plotter:
 
         # Title
         # fig.suptitle('')
+        # Set Biomass y-scale to be log and min at 0
+        # axs[0, 0].set_yscale('log')
+        axs[0, 0].set_ylim(bottom=0)
 
         axs[0, 0].set_ylabel('Biomass')
         axs[0, 1].set_ylabel('Profit')
@@ -79,10 +82,12 @@ class Plotter:
             lower_ax.set_xlabel('Horizon')
             lower_ax.xaxis.get_major_locator().set_params(integer=True)
 
-        axs[1, 1].legend(
-            bbox_to_anchor=(0.7925, 2.51),
-            bbox_transform=axs[1, 1].transAxes,
-            ncol=len(self.ds.omega),
+        axs[0, 1].legend(
+            # bbox_to_anchor=(0.7925, 2.51),
+            # bbox_transform=axs[1, 1].transAxes,
+            # ncol=len(self.ds.omega),
+            # loc='center left',
+            # title='Omega'
         )
 
         if save_path:

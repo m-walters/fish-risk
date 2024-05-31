@@ -119,9 +119,17 @@ class ProfitMaximizingPolicy(Policy):
         # set Es to 0 if B vanishes
         Es = np.where(params.B > 0, 1 - (coef * Bp) ** inv_gamma_power, 0.)
         Es = np.minimum(1, np.maximum(Es, 0.))
-        if jnp.logical_and(Es == 0., Bp >= 0.).any():
-            warnings.warn("Optimal extraction rate qE = 0 but Bp > 0.")
+        # if jnp.logical_and(Es == 0., Bp >= 0.).any():
+        #     warnings.warn("Optimal extraction rate qE = 0 but Bp > 0.")
         return Es
+
+
+class ConstantPolicy(Policy):
+    def sample(self, params: Params) -> Array:
+        """
+        Don't adjust E at all
+        """
+        return params.qE
 
 
 class RiskMitigationPolicy(Policy):
@@ -151,7 +159,6 @@ class LossModel(ModelBase):
         :param omega: Discount factor
         """
         loss: Array = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
-        # loss = (-1 / (1 + omega) ** t) * V_t
         return loss, jnp.zeros(loss.shape)
 
 
@@ -206,7 +213,7 @@ class ExponentialPreferencePrior(PreferencePrior):
         Compute the exponential preference prior
         Returns an array of shape [m, num_param_batches]
         """
-        return self.k * jnp.exp(-self.k * Lt)
+        return jnp.exp(-self.k * Lt)
 
 
 class UniformPreferencePrior(PreferencePrior):
@@ -260,6 +267,14 @@ class MonteCarloRiskModel(RiskModel):
         Return Array has shape [num_param_batches] since we reduce along the montecarlo axis=0
         """
         return Lt_logprob.mean(axis=0)
+
+
+class NullEntropy(RiskModel):
+    def compute_entropy(self, Lt: Array, Lt_logprob: Array, Vt: Array) -> Array:
+        """
+        Zero out the entropy term
+        """
+        return jnp.zeros(Lt.shape[1])
 
 
 class WorldModel(ModelBase):
