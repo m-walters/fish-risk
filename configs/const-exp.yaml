@@ -1,8 +1,7 @@
 # @package _global_
-# For a small profitmax run
 seed: 8675309
-name: "profitmax-small-ordermag"
-log_level: DEBUG
+name: ""
+log_level: INFO
 
 # fish params
 fish_params:
@@ -10,11 +9,11 @@ fish_params:
   k: &max_pop 200  # The max population
   r: 0.4
   qE:
-    lower: 0.2
-    upper: 0.8
+    lower: 0.45
+    upper: 0.55
 
 world_sim:
-  real_horizon: 3  # How long to run for
+  real_horizon: 40  # How long to run for
   plan_horizon: 20  # Planning horizon
   n_montecarlo: 10
 
@@ -22,11 +21,10 @@ world_sim:
 run_params:
   num_param_batches: 100
   omega:
-    - 0.001
-    - 0.01
+    - 0.
     - 0.1
+    - 0.5
     - 1.0
-    - 10.0
 
 # Action Models
 DE_dynamics:
@@ -37,21 +35,21 @@ DE_dynamics:
   max_b: *max_pop
 revenue:
   model: "RevenueModel"
-  P0: 1.2
-  rho: -0.8
+  P0: 0.2
+  rho: -0.5
 cost:
   model: "CostModel"
-  C0: 1.2
+  C0: &max_cost 2.0
   gamma: -0.5
 policy:
-  model: "ProfitMaximizingPolicy"
+  model: "ConstantPolicy"
 loss:
   model: "NoisyLossModel"
   scale: 0.1
 preference_prior:
-  model: "UniformPreferencePrior"
-  l_bar: 0.
+  model: "ExponentialPreferencePrior"
+  l_bar: *max_cost  # Maximum loss
   p_star: 0.5
-  l_star: 1.0
+  l_star: 0.1
 risk:
   model: "DifferentialEntropyRiskModel"
