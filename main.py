@@ -28,11 +28,6 @@ def main(cfg: DictConfig):
     # Print our config
     logger.info(f"CONFIG\n{OmegaConf.to_yaml(cfg)}")
 
-    logger.info(
-        f"Recommended value of rho: "
-        f"{utils.calc_nice_rho(cfg.fish_params.k, cfg.revenue.P0, cfg.cost.C0, cfg.cost.gamma)}"
-    )
-
     dynamics = getattr(models, cfg.DE_dynamics.model)(**cfg.DE_dynamics, seed=cfg.seed)
     revenue_model = getattr(models, cfg.revenue.model)(**cfg.revenue, seed=cfg.seed)
     cost_model = getattr(models, cfg.cost.model)(**cfg.cost, seed=cfg.seed)
