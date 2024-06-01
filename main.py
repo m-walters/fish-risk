@@ -98,7 +98,7 @@ def main(cfg: DictConfig):
     latest_dir = "results/latest"
     os.makedirs(latest_dir, exist_ok=True)
     OmegaConf.save(config=cfg, f=f"{latest_dir}/config.yaml")
-    omega_results.save_ds(ds, f"{latest_dir}/omegas_latest.nc")
+    omega_results.save_ds(ds, f"{latest_dir}/omega_results.nc")
 
     # If a name is provided, save there too
     if "name" in cfg:
@@ -110,7 +110,7 @@ def main(cfg: DictConfig):
 
     # Display a plot of results
     plotter = plotting.Plotter(ds)
-    plotter.omega_quad_plot(save_path=f"{latest_dir}/omegas_latest.png")
+    plotter.omega_quad_plot(save_path=f"{latest_dir}/omega_results.png")
     plt.show()
 
 

@@ -42,14 +42,15 @@ class Plotter:
     def subplots(nrow, ncol, **kwargs):
         return plt.subplots(nrow, ncol, **kwargs)
 
-    def omega_quad_plot(self, fig=None, axs=None, save_path=None):
+    def omega_quad_plot(self, fig=None, axs=None, save_path=None, plot_kwargs={}):
         """
         For an OmegaResults dataset
         Generate a 2x2 plot with Biomass, Profit, Risk, and E*
         In each plot, we reduce across the batch axis, and color by omega
         """
         if axs is None:
-            fig, axs = self.subplots(2, 2, sharex=True, figsize=(12, 6))
+            plot_kwargs['figsize'] = plot_kwargs.get('figsize', (12, 6))
+            fig, axs = self.subplots(2, 2, sharex=True, **plot_kwargs)
             plt.subplots_adjust(wspace=0.4)
 
         colors = self.get_color_wheel()
@@ -75,7 +76,7 @@ class Plotter:
         axs[0, 0].set_ylabel('Biomass')
         axs[0, 1].set_ylabel('Profit')
         axs[1, 0].set_ylabel('Risk')
-        axs[1, 1].set_ylabel('E*')
+        axs[1, 1].set_ylabel('E')
 
         for i in range(2):
             lower_ax = axs[1, i]
@@ -89,6 +90,9 @@ class Plotter:
             # loc='center left',
             # title='Omega'
         )
+
+        # Trim the whitespace around the image
+        plt.tight_layout()
 
         if save_path:
             plt.savefig(save_path)

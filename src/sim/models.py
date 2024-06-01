@@ -90,7 +90,8 @@ class CostModel(ModelBase):
     def __call__(self, qE: Array) -> Array:
         # Shape of array is [m, num_param_batches]
         # where m is either 1 for the "real" timestep or n_montecarlo for planning
-        return self.C0 * (1 - qE) ** self.gamma - self.C0
+        # return self.C0 * (1 - qE) ** self.gamma - self.C0
+        return self.C0 * (1 - qE) ** self.gamma
 
 
 class Policy(ModelBase):
