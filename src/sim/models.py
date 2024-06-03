@@ -82,15 +82,16 @@ class RevenueModel(ModelBase):
 
 
 class CostModel(ModelBase):
-    def __init__(self, C0: float, gamma: float, *args, **kwargs):
+    def __init__(self, C0: float, gamma: float, max_cost: float, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.C0 = C0
         self.gamma = gamma
+        self.max_cost = max_cost
 
     def __call__(self, qE: Array) -> Array:
         # Shape of array is [m, num_param_batches]
         # where m is either 1 for the "real" timestep or n_montecarlo for planning
-        return self.C0 * (1 - qE) ** self.gamma - self.C0
+        return np.where(np.abs(1-qE) > 1e-5, self.C0 * (1 - qE) ** self.gamma - self.C0, self.max_cost)
 
 
 class Policy(ModelBase):
@@ -132,20 +133,29 @@ class ConstantPolicy(Policy):
         return params.qE
 
 
-class RiskMitigationPolicy(Policy):
-    def __init__(
-        self,
-        revenue_model: RevenueModel,
-        cost_model: CostModel,
-        lmbda: float,
-        *args,
-        **kwargs
-    ):
+class APrioriPolicy(Policy):
+    def __init__(self, revenue_model: RevenueModel, cost_model: CostModel, *args, **kwargs):
         super().__init__(revenue_model, cost_model, *args, **kwargs)
-        self.lmbda = lmbda
 
-    def sample(self, params: Params):
-        return 0.0
+        self.qEs = None
+        self.time_idx = 0
+        self.max_time = 0
+
+    def reset_apriori_policy(self, qEs: np.array):
+        self.qEs = qEs
+        self.time_idx = 0
+        self.max_time = len(qEs) - 1
+
+    def sample(self, _: Params) -> Array:
+        """
+        Don't adjust E at all
+        """
+        if self.time_idx > self.max_time:
+            warnings.warn("APrioriPolicy needs to be reset. Length of input qEs array exceeded.")
+            self.time_idx = self.max_time
+        qE = self.qEs[self.time_idx]
+        self.time_idx += 1
+        return qE
 
 
 class LossModel(ModelBase):
@@ -195,7 +205,7 @@ class SigmoidPreferencePrior(PreferencePrior):
         Compute the sigmoid preference prior using loss and l_bar
         Returns an array of shape [m, num_param_batches]
         """
-        return jax.nn.sigmoid(self.l_bar - Lt)
+        return jax.nn.log_sigmoid(self.l_bar - Lt)
 
 
 class ExponentialPreferencePrior(PreferencePrior):
@@ -213,7 +223,7 @@ class ExponentialPreferencePrior(PreferencePrior):
         Compute the exponential preference prior
         Returns an array of shape [m, num_param_batches]
         """
-        return jnp.exp(-self.k * Lt)
+        return -self.k * Lt
 
 
 class UniformPreferencePrior(PreferencePrior):
@@ -222,7 +232,7 @@ class UniformPreferencePrior(PreferencePrior):
         Compute the uniform preference prior
         Returns an array of shape [m, num_param_batches]
         """
-        return np.ones(Lt.shape) / self.l_bar
+        return np.zeros(Lt.shape) - self.l_bar.log()
 
 
 class RiskModel(ModelBase):
@@ -239,7 +249,7 @@ class RiskModel(ModelBase):
         Arrays have shape [n_montecarlo, num_param_batches]
         """
         # this printing is important for evolving the preference model
-        sample_mean = jnp.log(self.preference_prior(Lt)).mean(axis=0)
+        sample_mean = self.preference_prior(Lt).mean(axis=0)
         entropy = self.compute_entropy(Lt, Lt_logprob, Vt)
         Gt = - entropy - sample_mean
         return Gt, entropy, sample_mean
@@ -252,9 +262,12 @@ class DifferentialEntropyRiskModel(RiskModel):
         Input Arrays have shape [n_montecarlo, num_param_batches] since this isn't called for real timesteps
         Return Array has shape [num_param_batches] since we reduce along the montecarlo axis=0
         """
-        ent = entr(Lt)
+        ent = entr(Lt) if len(Lt) > 1 else 0.
         if np.any(ent == float('-inf')):
             warnings.warn("-inf encountered in entropy")
+            # if Vt is 0, then just wet the differential entropy to 0
+            ent = np.where(np.logical_and(ent == -float('inf'), Vt == 0), 0, ent)
+            # set arbitrarily to -10
             ent = np.where(ent == -float('inf'), -10, ent)
         return ent
 
@@ -392,7 +405,6 @@ class WorldModel(ModelBase):
         param_montecarlo_dup = [copy(self.params) for _ in range(self.n_montecarlo)]
 
         Bs = jnp.vstack([np.array(p.B) for p in param_montecarlo_dup])
-        # ws = jnp.vstack([jax.random.lognormal(self.key.next_seed(), shape=self.param_montecarlo_dup.w.shape) for p in param_montecarlo_dup])
         ws = jnp.vstack([np.array(p.w) for p in param_montecarlo_dup])
         rs = jnp.vstack([np.array(p.r) for p in param_montecarlo_dup])
         ks = jnp.vstack([np.array(p.k) for p in param_montecarlo_dup])
@@ -423,3 +435,23 @@ class WorldModel(ModelBase):
             rts.append(Rt_sim)
 
         return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
+
+
+class ConstrainedPolicyWorldModel(WorldModel):
+    def __call__(self) -> Output:
+        """
+        Run the main world model simulation.
+        We collect various values at each real timestep and store them.
+        Collected values will have dimension either (1, num_param_batches) or (num_param_batches).
+        However, these get squeezed in the Output object.
+        The final [real_horizon, num_param_batch] set of results will be passed into an Output object.
+        """
+        es = []
+        rts = []
+        for t_sim in range(self.real_horizon):
+            es.append(self.params.qE)
+            sim_params = self.get_montecarlo_params()
+            Rt_sim = self.plan(sim_params)
+            rts.append(Rt_sim)
+
+        return (es, np.stack(rts).squeeze())
