@@ -1,6 +1,6 @@
 # @package _global_
 seed: 8675309
-name: "const-exp"
+name: ""
 log_level: INFO
 
 # fish params
@@ -9,48 +9,48 @@ fish_params:
   k: &max_pop 200  # The max population
   r: 0.4
   qE:
-    lower: 0.45
-    upper: 0.55
+    step: 0.1
 
 world_sim:
-  real_horizon: 40  # How long to run for
+  real_horizon: 1   # How long to run for
   plan_horizon: 20  # Planning horizon
-  n_montecarlo: 10
+  n_montecarlo: 1
 
 # Parameters outside the world sim
 run_params:
-  num_param_batches: 100
-  omega:
-    - 0.
-    - 0.1
-    - 0.5
-    - 1.0
+  num_param_batches: 1
+  lmbda:
+    min:
+      - 200.
+    max:
+      - 500.
+    step:
+      - 10.0
 
 # Action Models
 DE_dynamics:
   model: "EulerMaruyamaDynamics"
   t_end: 1
   num_points: 10
-  D: 1.0
+  D: 0.0
   max_b: *max_pop
 revenue:
   model: "RevenueModel"
-  P0: 0.5
+  P0: 0.2
   rho: -0.5
 cost:
   model: "CostModel"
-  C0: &max_cost 1.0
+  C0: 2.0
   gamma: -0.5
-  max_cost: 2000
+  max_cost: &max_cost 30
 policy:
-  model: "ConstantPolicy"
+  model: "APrioriPolicy"
 loss:
-  model: "NoisyLossModel"
-  scale: 0.1
+  model: "LossModel"
 preference_prior:
   model: "ExponentialPreferencePrior"
   l_bar: *max_cost  # Maximum loss
   p_star: 0.5
-  l_star: *max_cost
+  l_star: 0.1
 risk:
   model: "DifferentialEntropyRiskModel"

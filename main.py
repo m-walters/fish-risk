@@ -38,8 +38,6 @@ def main(cfg: DictConfig):
     preference_prior = getattr(models, cfg.preference_prior.model)(**cfg.preference_prior, seed=cfg.seed)
     risk_model = getattr(models, cfg.risk.model)(preference_prior=preference_prior, **cfg.risk, seed=cfg.seed)
 
-    # lmbdas = np.linspace(0., 1000., 100)
-
     fish_params = DictConfig(cfg.fish_params)
     with pm.Model() as pm_model:  # this is a pymc model and in particular the "with...as..." syntax means all assignments in this block are associated with this model's context!
         # B0 = pm.MutableData("B", fish_params.B0)
@@ -109,8 +107,8 @@ def main(cfg: DictConfig):
         omega_results.save_ds(ds, f"{run_dir}/omega_results.nc")
 
     # Display a plot of results
-    plotter = plotting.Plotter(ds)
-    plotter.omega_quad_plot(save_path=f"{latest_dir}/omega_results.png")
+    plotter = plotting.OmegaPlotter(ds)
+    plotter.omega_quad_plot(save_path=f"{latest_dir}/omegas_results.png")
     plt.show()
 
 

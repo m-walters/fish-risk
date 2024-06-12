@@ -65,7 +65,23 @@ class Output:
         pass
 
 
-class OmegaResults:
+class Results:
+    @staticmethod
+    def save_ds(ds: xr.Dataset, path):
+        """
+        Save an omega dataset to disk
+        """
+        ds.to_netcdf(path)
+
+    @staticmethod
+    def load_ds(path):
+        """
+        Load a saved dataset
+        """
+        return xr.open_dataset(path)
+
+
+class OmegaResults(Results):
     """
     Class for saving runs that iterate over omega
     Outputs must have dimensions/coordinates [omega, time, param_batch]
@@ -108,16 +124,31 @@ class OmegaResults:
         )
         return ds
 
-    @staticmethod
-    def save_ds(ds: xr.Dataset, path):
-        """
-        Save an omega dataset to disk
-        """
-        ds.to_netcdf(path)
 
-    @staticmethod
-    def load_ds(path):
-        """
-        Load a saved dataset
-        """
-        return xr.open_dataset(path)
+class LambdaResults(Results):
+    """
+    Class for saving runs that iterate over lambda
+    Outputs must have dimensions/coordinates [lambda, qE]
+    """
+    def __init__(
+        self,
+            qEs: np.array,
+            risks: np.array,
+    ):
+        self.qEs = qEs
+        self.risks = risks
+        self.plan_horizon = qEs.shape[1]
+
+    def to_dataset(self) -> xr.Dataset:
+        pass
+        # ds = xr.Dataset(
+        #      {
+        #          "qE": (("risk", "time"), self.qEs),
+        #          "risk": (("risk"), self.risks),
+        #      },
+        #      coords={
+        #          "lmbda": self.risks,
+        #          "time": np.arange(self.plan_horizon),
+        #      },
+        # )
+        # return ds

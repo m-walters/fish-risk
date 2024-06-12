@@ -12,6 +12,19 @@ for plotting with xarray objects
 
 
 class Plotter:
+    @staticmethod
+    def get_color_wheel():
+        """
+        Return a color generator for the current seaborn palette
+        """
+        return iter(sns.color_palette())
+
+    @staticmethod
+    def subplots(nrow, ncol, **kwargs):
+        return plt.subplots(nrow, ncol, **kwargs)
+
+
+class OmegaPlotter(Plotter):
     """
     Plotting util for xArray Datasets
     """
@@ -30,17 +43,6 @@ class Plotter:
         sns.set()
         sns.set_context(sns_context)
         sns.set_palette("colorblind")
-
-    @staticmethod
-    def get_color_wheel():
-        """
-        Return a color generator for the current seaborn palette
-        """
-        return iter(sns.color_palette())
-
-    @staticmethod
-    def subplots(nrow, ncol, **kwargs):
-        return plt.subplots(nrow, ncol, **kwargs)
 
     def omega_quad_plot(self, fig=None, axs=None, save_path=None, plot_kwargs={}):
         """
@@ -98,3 +100,72 @@ class Plotter:
             plt.savefig(save_path)
 
         return fig, axs
+
+
+class LambdaPlotter(Plotter):
+    """
+    Plotting util for xArray Datasets
+    """
+
+    def __init__(
+        self,
+        ds_or_path: Union[xr.Dataset, str],
+        sns_context: str = "notebook",  # or "paper", "talk", "poster"
+    ):
+        # if isinstance(ds_or_path, xr.Dataset):
+        #     self.ds = ds_or_path
+        # else:
+        #     self.ds = xr.open_dataset(ds_or_path)
+
+        # Initialize seaborn
+        sns.set()
+        sns.set_context(sns_context)
+        sns.set_palette("colorblind")
+
+    @staticmethod
+    def get_color_wheel(n_colors=10):
+        """
+        Return a color generator for the current seaborn palette
+        """
+        return iter(sns.color_palette(n_colors=n_colors))
+
+    @staticmethod
+    def subplots(nrow, ncol, **kwargs):
+        return plt.subplots(nrow, ncol, **kwargs)
+
+    def risk_plot(self, qE_sums, rts, save_path):
+        """
+        For an OmegaResults dataset
+        Generate a 2x2 plot with Biomass, Profit, Risk, and E*
+        In each plot, we reduce across the batch axis, and color by omega
+        """
+
+        plt.plot(qE_sums, rts)
+        plt.ylabel('Risk')
+        plt.xlabel('Sum of E')
+
+        # Trim the whitespace around the image
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path)
+
+    def policy_plot(self, qEs, risks, save_path=None):
+        time = np.arange(qEs.shape[1])
+
+        colors = self.get_color_wheel(n_colors=len(risks))
+        for idx, (qE, risk) in enumerate(zip(qEs, risks)):
+            if idx % 5 == 0:
+                c = next(colors)
+                plt.plot(time, qE, label='{:.1f}'.format(risk), color=c)
+
+        plt.ylabel('Et')
+        plt.xlabel('time')
+        plt.xlim(0., 5.)
+        plt.legend()
+
+        # Trim the whitespace around the image
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path)
