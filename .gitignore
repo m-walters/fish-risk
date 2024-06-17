@@ -160,3 +160,10 @@ cython_debug/
 .idea/
 
 outputs/
+
+*.DS_Store
+
+*tmp.py
+*tmp.yaml
+results/*
+!results/freezer/
