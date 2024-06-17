@@ -165,5 +165,3 @@ outputs/
 
 *tmp.py
 *tmp.yaml
-results/*
-!results/freezer/
