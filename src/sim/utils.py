@@ -152,3 +152,45 @@ class LambdaResults(Results):
         #      },
         # )
         # return ds
+
+
+
+class ProjectionResults(Results):
+    """
+    For risk projection analysis
+    Outputs must have dimensions/coordinates [Es, time, param_batch]
+    """
+
+    def __init__(
+        self,
+        Es: Union[np.ndarray, List[float]],
+        outputs: List[Output],
+        real_horizon: int,
+        num_param_batches: int,
+    ):
+        self.Es = Es
+        self.outputs = outputs
+        self.real_horizon = real_horizon
+        self.num_param_batches = num_param_batches
+
+    def to_dataset(self) -> xr.Dataset:
+        """
+        Outputs must have dimensions [qEs, time, param_batch]
+        """
+        Bs = [output.Bs for output in self.outputs]
+        Vs = [output.Vs for output in self.outputs]
+        Rts = [output.Rts for output in self.outputs]
+
+        ds = xr.Dataset(
+            {
+                "B": (("E", "time", "batch"), Bs),
+                "V": (("E", "time", "batch"), Vs),
+                "Rt": (("E", "time", "batch"), Rts),
+            },
+            coords={
+                "E": self.Es,
+                "time": np.arange(self.real_horizon),
+                "batch": np.arange(self.num_param_batches),
+            },
+        )
+        return ds

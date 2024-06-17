@@ -9,8 +9,10 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 
 from sim import models, plotting, utils
 
+RESULTS_DIR = "../results"
 
-@hydra.main(version_base=None, config_path="configs")
+
+@hydra.main(version_base=None, config_path="../configs")
 def main(cfg: DictConfig):
     """
     Set the parameters and run the sim
@@ -109,14 +111,14 @@ def main(cfg: DictConfig):
     lambda_results = utils.LambdaResults(qE_array, rts)
     ds = lambda_results.to_dataset()
     # # Automatically save latest
-    latest_dir = "results/latest"
+    latest_dir = f"{RESULTS_DIR}/latest"
     # os.makedirs(latest_dir, exist_ok=True)
     # OmegaConf.save(config=cfg, f=f"{latest_dir}/config.yaml")
     # lambda_results.save_ds(ds, f"{latest_dir}/lambdas_latest.nc")
 
     # # If a name is provided, save there too
     # if "name" in cfg:
-    #     save_dir: str = cfg.get("save_dir", "results")
+    #     save_dir: str = cfg.get("save_dir", RESULTS_DIR)
     #     run_dir: str = os.path.join(save_dir, cfg.name)
     #     os.makedirs(run_dir, exist_ok=True)
     #     OmegaConf.save(config=cfg, f=f"{run_dir}/config.yaml")

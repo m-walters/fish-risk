@@ -198,6 +198,12 @@ class PreferencePrior(ModelBase):
         super().__init__(*args, **kwargs)
         self.l_bar = l_bar
 
+    def step(self, t: int):
+        """
+        Evolve the preference prior
+        """
+        raise NotImplementedError
+
 
 class SigmoidPreferencePrior(PreferencePrior):
     def __call__(self, Lt: Array) -> Array:
@@ -224,6 +230,10 @@ class ExponentialPreferencePrior(PreferencePrior):
         Returns an array of shape [m, num_param_batches]
         """
         return -self.k * Lt
+
+    def step(self, t: int):
+        ...
+
 
 
 class UniformPreferencePrior(PreferencePrior):
@@ -311,7 +321,6 @@ class WorldModel(ModelBase):
         loss_model,
         risk_model,
         debug=False,
-        omega_scale=1,
         *args,
         **kwargs
     ):
@@ -329,7 +338,6 @@ class WorldModel(ModelBase):
         self.loss_model = loss_model
         self.risk_model = risk_model
         self.debug = debug
-        self.omega_scale = omega_scale
 
         # Can override logger
         if self.debug:
@@ -455,3 +463,85 @@ class ConstrainedPolicyWorldModel(WorldModel):
             rts.append(Rt_sim)
 
         return (es, np.stack(rts).squeeze())
+
+
+class PreferenceEvolveWorldModel(WorldModel):
+    """
+    Stakeholder preferences evolve over time, dictated by omega.
+    Agents can't anticipate these changes.
+    """
+    def __init__(
+        self,
+        params,
+        num_param_batches,
+        n_montecarlo,
+        real_horizon,
+        plan_horizon,
+        dynamics,
+        policy,
+        revenue_model,
+        cost_model,
+        loss_model,
+        risk_model,
+        debug=False,
+        *args,
+        **kwargs
+    ):
+        super().__init__(
+            params,
+            num_param_batches,
+            n_montecarlo,
+            real_horizon,
+            plan_horizon,
+            dynamics,
+            policy,
+            revenue_model,
+            cost_model,
+            loss_model,
+            risk_model,
+            debug=False,
+            *args,
+            **kwargs
+        )
+
+        self.params = params
+        self.num_param_batches = num_param_batches
+        self.n_montecarlo = n_montecarlo
+        self.dynamics = dynamics
+        self.real_horizon = real_horizon
+        self.plan_horizon = plan_horizon
+        self.policy = policy
+        self.revenue_model = revenue_model
+        self.cost_model = cost_model
+        self.loss_model = loss_model
+        self.risk_model = risk_model
+        self.debug = debug
+
+        # Can override logger
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+
+    def __call__(self) -> Output:
+        """
+        Run the main world model simulation.
+        We collect various values at each real timestep and store them.
+        Collected values will have dimension either (1, num_param_batches) or (num_param_batches).
+        However, these get squeezed in the Output object.
+        The final [real_horizon, num_param_batch] set of results will be passed into an Output object.
+        """
+        es = []
+        bs = []
+        vs = []
+        rts = []
+        for t_sim in range(self.real_horizon):
+            es.append(self.params.qE)
+            # behaviour of agent is myopic in that it doesn't care about planning risk
+            _, _, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            sim_params = self.get_montecarlo_params()
+            Rt_sim = self.plan(sim_params)
+            bs.append(Bt_sim)
+            vs.append(Vt_sim)
+            rts.append(Rt_sim)
+
+        return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
+
