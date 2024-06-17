@@ -44,7 +44,7 @@ def main(cfg: DictConfig):
     fish_params = DictConfig(cfg.fish_params)
     with pm.Model() as pm_model:  # this is a pymc model and in particular the "with...as..." syntax means all assignments in this block are associated with this model's context!
         # B0 = pm.MutableData("B", fish_params.B0)
-        # r = pm.ConstantData("r", fish_params.r)
+        r = pm.Uniform("r", 0.1, 0.5)
         # k = pm.ConstantData("k", fish_params.k)
         # w = pm.MutableData("w", cfg.run_params.omega.min)
         qE = pm.Uniform("qE", fish_params.qE.lower, fish_params.qE.upper)
@@ -66,11 +66,12 @@ def main(cfg: DictConfig):
     for w in omegas:
         print('Simulating with omega = {}\n'.format(w))
 
+        # Specify by kwarg the constant parameters, since otherwise order matters
         p = utils.Params(
-            cfg.fish_params.B0 * np.ones((1, cfg.run_params.num_param_batches)),
-            w * np.ones((1, cfg.run_params.num_param_batches)),
-            cfg.fish_params.r * np.ones((1, cfg.run_params.num_param_batches)),
-            cfg.fish_params.k * np.ones((1, cfg.run_params.num_param_batches)),
+            B=cfg.fish_params.B0 * np.ones((1, cfg.run_params.num_param_batches)),
+            w=w * np.ones((1, cfg.run_params.num_param_batches)),
+            # cfg.fish_params.r * np.ones((1, cfg.run_params.num_param_batches)),
+            k=cfg.fish_params.k * np.ones((1, cfg.run_params.num_param_batches)),
             **samples.prior
         )
 

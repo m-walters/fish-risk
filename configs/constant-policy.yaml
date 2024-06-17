@@ -1,6 +1,6 @@
 # @package _global_
 seed: 8675309
-name: "const-exp"
+name: "constant-policy"
 log_level: INFO
 
 # fish params
