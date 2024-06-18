@@ -1,0 +1,47 @@
+seed: 8675309
+name: risk-projection-sig
+log_level: INFO
+fish_params:
+  B0: 200
+  k: 400
+  r: 0.5
+  qE:
+  - 0.1
+  - 0.3
+  - 0.7
+  - 0.9
+world_sim:
+  real_horizon: 40
+  plan_horizon: 10
+  n_montecarlo: 10
+run_params:
+  num_param_batches: 100
+  omega:
+  - 0.2
+DE_dynamics:
+  model: EulerMaruyamaDynamics
+  t_end: 1
+  num_points: 10
+  D: 2.0
+  max_b: 400
+revenue:
+  model: RevenueModel
+  P0: 0.5
+  rho: -0.5
+cost:
+  model: CostModel
+  C0: 1.0
+  gamma: -0.5
+  max_cost: 0.01
+policy:
+  model: ConstantPolicy
+loss:
+  model: NoisyLossModel
+  scale: 0.1
+preference_prior:
+  model: SigmoidPreferencePrior
+  l_bar: 1.0
+  p_star: 0.5
+  l_star: 1.0
+risk:
+  model: DifferentialEntropyRiskModel

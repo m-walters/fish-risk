@@ -1,6 +1,6 @@
 # @package _global_
 seed: 8675309
-name: "const-exp"
+name: "constant-policy"
 log_level: INFO
 
 # fish params
@@ -41,6 +41,7 @@ cost:
   model: "CostModel"
   C0: &max_cost 1.0
   gamma: -0.5
+  max_cost: 2000
 policy:
   model: "ConstantPolicy"
 loss:

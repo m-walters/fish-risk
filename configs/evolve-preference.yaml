@@ -1,0 +1,63 @@
+# @package _global_
+seed: 8675309
+name: "evolve-preference-2"
+log_level: DEBUG
+
+# fish params
+fish_params:
+  B0: 180
+  k: &max_pop 400  # The max population
+  r:
+    lower: 0.4
+    upper: 0.6
+  qE:
+    lower: 0.4
+    upper: 0.7
+
+world_sim:
+  real_horizon: &real_horizon 40  # How long to run for
+  plan_horizon: 20  # Planning horizon
+  n_montecarlo: 10
+
+# Parameters outside the world sim
+run_params:
+  num_param_batches: 100
+  omega: 0.1
+
+# Action Models
+DE_dynamics:
+  model: "EulerMaruyamaDynamics"
+  t_end: 1
+  num_points: 10
+  D: 1.0
+  max_b: *max_pop
+revenue:
+  model: "RevenueModel"
+  P0: 0.5
+  rho: -0.5
+cost:
+  model: "CostModel"
+  C0: &max_cost 1.0
+  gamma: -0.5
+  max_cost: *max_cost
+policy:
+  model: "ConstantPolicy"
+loss:
+  model: "LossModel"
+  scale: 0.01
+preference_prior:
+  model: "ExponentialPreferencePrior"
+  p_star:
+    # kwargs for a ParamIterator
+    evolution: "geometric"
+    x_0: 0.9
+    x_T: 0.1
+    n_steps: *real_horizon
+#    transitions: [20]
+  l_star:
+    # kwargs for a ParamIterator
+    evolution: "constant"
+    x_0: *max_cost
+    n_steps: *real_horizon
+risk:
+  model: "MonteCarloRiskModel"
