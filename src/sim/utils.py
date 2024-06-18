@@ -198,6 +198,7 @@ class ParamIterator:
         The transitions are a list of step indices to transition.
         Transition values are evenly divided based on num transitions and x_end - x_0
         """
+        assert len(transitions) > 0
         delta = (x_end - x_0) / len(transitions)
         x = x_0
         for i in range(n_steps + 1):
@@ -246,17 +247,32 @@ class Output:
         Bs: List[Array],
         Vs: List[Array],
         Rts: List[Array],
+        Lts: List[Array],
+        param_history: dict[str, list[Number]] | None = None,
     ):
         """
         Outputs from the main world model sim.
         Each variable is a list of length real_horizon,
         and each element therein is an array of shape either (1, num_param_batches) or (num_param_batches).
         The stored values become numpy ndarrays of shape [real_horizon, num_param_batches].
+
+        param_history
         """
         self.Es = np.stack(Es).squeeze()
         self.Bs = np.stack(Bs).squeeze()
         self.Vs = np.stack(Vs).squeeze()
         self.Rts = np.stack(Rts).squeeze()
+        self.Lts = np.stack(Lts).squeeze()
+        self.param_history = {}
+        if param_history is not None:
+            # numpify
+            for p, vals in param_history.items():
+                # Validate that the shapes are right and tight, and don't have a bad name
+                assert self.Es.shape[0] == len(vals)
+                assert p not in ["E", "B", "V", "Rt", "Lt"]
+                self.param_history[p] = np.array(vals)
+
+        assert self.Es.shape == self.Bs.shape == self.Vs.shape == self.Rts.shape == self.Lts.shape
 
     def plot(self):
         pass
@@ -416,6 +432,13 @@ class EvolvePreferenceResults(Results):
         Bs = self.output.Bs
         Vs = self.output.Vs
         Rts = self.output.Rts
+        Lts = self.output.Lts
+
+        # Params don't have a batch dimension since they are constant across num_param_batch
+        param_data = {
+            p: (("time",), self.output.param_history[p])
+            for p in self.output.param_history
+        }
 
         ds = xr.Dataset(
             {
@@ -423,6 +446,8 @@ class EvolvePreferenceResults(Results):
                 "B": (("time", "batch"), Bs),
                 "V": (("time", "batch"), Vs),
                 "Rt": (("time", "batch"), Rts),
+                "Lt": (("time", "batch"), Lts),
+                **param_data,
             },
             coords={
                 "time": np.arange(self.real_horizon),

@@ -41,27 +41,23 @@ cost:
   gamma: -0.5
   max_cost: *max_cost
 policy:
-  model: "ProfitMaximizingPolicy"
+  model: "ConstantPolicy"
 loss:
-  model: "NoisyLossModel"
-  scale: 0.1
+  model: "LossModel"
+  scale: 0.01
 preference_prior:
   model: "ExponentialPreferencePrior"
   p_star:
     # kwargs for a ParamIterator
-    evolution: "step"
-#    x_0: 0.9
-#    x_T: 0.001
-    x_0: 0.5
-    x_T: 0.5001
-    n_steps: *real_horizon
-    transitions: [10]
-  l_star:
-    # kwargs for a ParamIterator
-    evolution: "step"
-    x_0: *max_cost
+    evolution: "geometric"
+    x_0: 0.9
     x_T: 0.1
     n_steps: *real_horizon
-    transitions: [10]
+#    transitions: [20]
+  l_star:
+    # kwargs for a ParamIterator
+    evolution: "constant"
+    x_0: *max_cost
+    n_steps: *real_horizon
 risk:
-  model: "DifferentialEntropyRiskModel"
+  model: "MonteCarloRiskModel"

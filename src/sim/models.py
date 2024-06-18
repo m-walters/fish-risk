@@ -172,7 +172,7 @@ class LossModel(ModelBase):
         :param omega: Discount factor
         """
         loss: Array = (-1 / (1 + omega) ** t) * np.minimum(V_t, 0)
-        return loss, jnp.zeros(loss.shape)
+        return loss, -10 * jnp.ones(loss.shape)  # Set log_probs to -10 to show high precision.
 
 
 class NoisyLossModel(LossModel):
@@ -197,12 +197,12 @@ class NoisyLossModel(LossModel):
 
 
 class PreferencePrior(ModelBase):
-    def __init__(
-        self,
-        *args,
-        **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
+        """
+        Also store param histories as they evolve, keyed by their name
+        """
         super().__init__(*args, **kwargs)
+        self.param_history = {}
 
     def _init_param(self, p: Union[Number, ParamIteratorConfig]) -> ParamIterator:
         """
@@ -221,6 +221,7 @@ class PreferencePrior(ModelBase):
     def step(self):
         """
         Evolve the preference prior
+        Be sure to also store its last value
         """
         raise NotImplementedError
 
@@ -233,12 +234,15 @@ class SigmoidPreferencePrior(PreferencePrior):
     ):
         super().__init__(*args, **kwargs)
 
+        self.param_history["l_bar"] = []
+
         l_bar_iter = self._init_param(l_bar)
         self.l_bar_iter = l_bar_iter
-        # Take first step
+        # Init value
         self.l_bar = l_bar_iter()
 
     def step(self):
+        self.param_history["l_bar"].append(self.l_bar)
         self.l_bar = self.l_bar_iter()
 
     def __call__(self, Lt: Array) -> Array:
@@ -262,12 +266,19 @@ class ExponentialPreferencePrior(PreferencePrior):
         *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
+
+        self.param_history = {
+            "p_star": [],
+            "l_star": [],
+            "k": [],
+        }
+
         p_star_iter = self._init_param(p_star)
         l_star_iter = self._init_param(l_star)
 
         self.p_star_iter = p_star_iter
         self.l_star_iter = l_star_iter
-        # Take first step
+        # Init value
         self.p_star = self.p_star_iter()
         self.l_star = self.l_star_iter()
 
@@ -276,6 +287,10 @@ class ExponentialPreferencePrior(PreferencePrior):
         return -jnp.log(self.p_star) / self.l_star
 
     def step(self):
+        self.param_history["p_star"].append(self.p_star)
+        self.param_history["l_star"].append(self.l_star)
+        self.param_history["k"].append(self.k)
+
         self.p_star = self.p_star_iter()
         self.l_star = self.l_star_iter()
 
@@ -294,12 +309,16 @@ class UniformPreferencePrior(PreferencePrior):
         *args, **kwargs
     ):
         super().__init__(*args, **kwargs)
+
+        self.param_history["l_bar"] = []
+
         l_bar_iter = self._init_param(l_bar)
         self.l_bar_iter = l_bar_iter
-        # Take first step
+        # Init value
         self.l_bar = l_bar_iter()
 
     def step(self):
+        self.param_history["l_bar"].append(self.l_bar)
         self.l_bar = self.l_bar_iter()
 
     def __call__(self, Lt):
@@ -497,17 +516,22 @@ class WorldModel(ModelBase):
         bs = []
         vs = []
         rts = []
+        lts = []
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
             # behaviour of agent is myopic in that it doesn't care about planning risk
-            _, _, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
             sim_params = self.get_montecarlo_params()
             Rt_sim = self.plan(sim_params)
             bs.append(Bt_sim)
             vs.append(Vt_sim)
             rts.append(Rt_sim)
+            lts.append(Lt)
 
-        return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
+        return Output(
+            Es=es, Bs=bs, Vs=vs, Rts=rts, Lts=lts,
+            param_history=self.risk_model.preference_prior.param_history
+        )
 
 
 class ConstrainedPolicyWorldModel(WorldModel):
@@ -599,16 +623,21 @@ class PreferenceEvolveWorldModel(WorldModel):
         bs = []
         vs = []
         rts = []
+        lts = []
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
             # behaviour of agent is myopic in that it doesn't care about planning risk
-            _, _, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
             sim_params = self.get_montecarlo_params()
             Rt_sim = self.plan(sim_params)
             bs.append(Bt_sim)
             vs.append(Vt_sim)
             rts.append(Rt_sim)
+            lts.append(Lt)
             # Advance the preference params
             self.risk_model.preference_prior.step()
 
-        return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
+        return Output(
+            Es=es, Bs=bs, Vs=vs, Rts=rts, Lts=lts,
+            param_history=self.risk_model.preference_prior.param_history
+        )
