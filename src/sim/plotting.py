@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,6 +15,7 @@ class Plotter:
     """
     Plotting util for xArray Datasets
     """
+
     def __init__(
         self,
         ds_or_path: Union[xr.Dataset, str],
@@ -41,7 +42,7 @@ class Plotter:
     def subplots(nrow, ncol, **kwargs):
         return plt.subplots(nrow, ncol, **kwargs)
 
-    def omega_quad_plot(self, fig=None, axs=None, save_path=None, plot_kwargs: Optional[dict]=None):
+    def omega_quad_plot(self, fig=None, axs=None, save_path=None, plot_kwargs: Optional[dict] = None):
         """
         For an OmegaResults dataset
         Generate a 2x2 plot with Biomass, Profit, Risk, and E*
@@ -100,7 +101,7 @@ class Plotter:
 
         return fig, axs
 
-    def projection_plot(self, fig=None, axs=None, save_path=None, plot_kwargs: Optional[dict]=None):
+    def projection_plot(self, fig=None, axs=None, save_path=None, plot_kwargs: Optional[dict] = None):
         """
         For a ProjectionResults dataset
         Generate two plots that show risk projections for different qE values, and biomass evolution
@@ -166,6 +167,64 @@ class Plotter:
             # title='Omega'
         )
 
+        # Trim the whitespace around the image
+        plt.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path)
+
+        return fig, axs
+
+    def pref_evolve_plot(self, fig=None, axs=None, save_path=None, plot_kwargs: Optional[dict] = None):
+        """
+        For an EvolvePreferenceResults dataset
+        Generate a 2x2 plot with Biomass, Profit, Risk, and E
+        In each plot, we reduce across the batch axis, and color by omega
+        """
+        plot_kwargs = plot_kwargs or {}
+
+        if axs is None:
+            plot_kwargs['figsize'] = plot_kwargs.get('figsize', (12, 6))
+            fig, axs = self.subplots(2, 2, sharex=True, **plot_kwargs)
+            plt.subplots_adjust(wspace=0.4)
+
+        colors = self.get_color_wheel()
+        c = next(colors)
+        for i, var in enumerate(['B', 'V', 'Rt', 'E']):
+            # This produces a pivot table with time as index and batch as columns
+            pivot = self.ds[var].to_pandas()
+            # Melt it to go from wide to long form, with batch as a variable, and our var as value
+            melted = pivot.melt(var_name='batch', value_name=var, ignore_index=False)
+            # label = f"w={np.round(omega.values, 2)}"
+            sns.lineplot(
+                x="time", y=var, data=melted, color=c, ax=axs[i // 2, i % 2],
+                legend=False,
+                # label=label,
+            )
+
+        # Title
+        # fig.suptitle('')
+        # Set Biomass y-scale to be log and min at 0
+        # axs[0, 0].set_yscale('log')
+        axs[0, 0].set_ylim(bottom=0)
+
+        axs[0, 0].set_ylabel('Biomass')
+        axs[0, 1].set_ylabel('Profit')
+        axs[1, 0].set_ylabel('Risk')
+        axs[1, 1].set_ylabel('E')
+
+        for i in range(2):
+            lower_ax = axs[1, i]
+            lower_ax.set_xlabel('Horizon')
+            lower_ax.xaxis.get_major_locator().set_params(integer=True)
+
+        axs[0, 1].legend(
+            # bbox_to_anchor=(0.7925, 2.51),
+            # bbox_transform=axs[1, 1].transAxes,
+            # ncol=len(self.ds.omega),
+            # loc='center left',
+            # title='Omega'
+        )
 
         # Trim the whitespace around the image
         plt.tight_layout()

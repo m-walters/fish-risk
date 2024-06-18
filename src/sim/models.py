@@ -2,14 +2,17 @@ import logging
 import warnings
 from abc import ABC
 from copy import copy
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from omegaconf import DictConfig
 from scipy.stats import differential_entropy as entr
 
-from sim.utils import Array, JaxGaussian, JaxRKey, Output, Params
+from sim.utils import (
+    Array, JaxGaussian, JaxRKey, Number, Output, ParamEvolution, ParamIterator, ParamIteratorConfig, Params
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +94,7 @@ class CostModel(ModelBase):
     def __call__(self, qE: Array) -> Array:
         # Shape of array is [m, num_param_batches]
         # where m is either 1 for the "real" timestep or n_montecarlo for planning
-        return np.where(np.abs(1-qE) > 1e-5, self.C0 * (1 - qE) ** self.gamma - self.C0, self.max_cost)
+        return np.where(np.abs(1 - qE) > 1e-5, self.C0 * (1 - qE) ** self.gamma - self.C0, self.max_cost)
 
 
 class Policy(ModelBase):
@@ -194,11 +197,28 @@ class NoisyLossModel(LossModel):
 
 
 class PreferencePrior(ModelBase):
-    def __init__(self, l_bar: float, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
-        self.l_bar = l_bar
 
-    def step(self, t: int):
+    def _init_param(self, p: Union[Number, ParamIteratorConfig]) -> ParamIterator:
+        """
+        Use this method to initialize you parameters as ParamIterators
+        """
+        if isinstance(p, ParamIterator):
+            return p
+
+        if isinstance(p, (dict, DictConfig)):
+            return ParamIterator(**p)
+        elif isinstance(p, (int, float)):
+            return ParamIterator(evolution=ParamEvolution.CONSTANT, x_0=p)
+        else:
+            raise ValueError(f"Unrecognized parameter type: {p}")
+
+    def step(self):
         """
         Evolve the preference prior
         """
@@ -206,6 +226,21 @@ class PreferencePrior(ModelBase):
 
 
 class SigmoidPreferencePrior(PreferencePrior):
+    def __init__(
+        self,
+        l_bar: Union[ParamIterator, ParamIteratorConfig],
+        *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+
+        l_bar_iter = self._init_param(l_bar)
+        self.l_bar_iter = l_bar_iter
+        # Take first step
+        self.l_bar = l_bar_iter()
+
+    def step(self):
+        self.l_bar = self.l_bar_iter()
+
     def __call__(self, Lt: Array) -> Array:
         """
         Compute the sigmoid preference prior using loss and l_bar
@@ -220,9 +255,29 @@ class ExponentialPreferencePrior(PreferencePrior):
     k = -ln(p*)/L* where p* is the stakeholder's probability that loss will surpass L*
     """
 
-    def __init__(self, l_bar: float, p_star: float, l_star: float, *args, **kwargs):
-        super().__init__(l_bar)
-        self.k = -jnp.log(p_star) / l_star
+    def __init__(
+        self,
+        p_star: Union[ParamIterator, ParamIteratorConfig],
+        l_star: Union[ParamIterator, ParamIteratorConfig],
+        *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        p_star_iter = self._init_param(p_star)
+        l_star_iter = self._init_param(l_star)
+
+        self.p_star_iter = p_star_iter
+        self.l_star_iter = l_star_iter
+        # Take first step
+        self.p_star = self.p_star_iter()
+        self.l_star = self.l_star_iter()
+
+    @property
+    def k(self):
+        return -jnp.log(self.p_star) / self.l_star
+
+    def step(self):
+        self.p_star = self.p_star_iter()
+        self.l_star = self.l_star_iter()
 
     def __call__(self, Lt: Array) -> Array:
         """
@@ -231,18 +286,28 @@ class ExponentialPreferencePrior(PreferencePrior):
         """
         return -self.k * Lt
 
-    def step(self, t: int):
-        ...
-
-
 
 class UniformPreferencePrior(PreferencePrior):
+    def __init__(
+        self,
+        l_bar: Union[ParamIterator, ParamIteratorConfig],
+        *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        l_bar_iter = self._init_param(l_bar)
+        self.l_bar_iter = l_bar_iter
+        # Take first step
+        self.l_bar = l_bar_iter()
+
+    def step(self):
+        self.l_bar = self.l_bar_iter()
+
     def __call__(self, Lt):
         """
         Compute the uniform preference prior
         Returns an array of shape [m, num_param_batches]
         """
-        return np.zeros(Lt.shape) - self.l_bar.log()
+        return np.zeros(Lt.shape) - np.log(self.l_bar)
 
 
 class RiskModel(ModelBase):
@@ -470,6 +535,7 @@ class PreferenceEvolveWorldModel(WorldModel):
     Stakeholder preferences evolve over time, dictated by omega.
     Agents can't anticipate these changes.
     """
+
     def __init__(
         self,
         params,
@@ -542,6 +608,7 @@ class PreferenceEvolveWorldModel(WorldModel):
             bs.append(Bt_sim)
             vs.append(Vt_sim)
             rts.append(Rt_sim)
+            # Advance the preference params
+            self.risk_model.preference_prior.step()
 
         return Output(Es=es, Bs=bs, Vs=vs, Rts=rts)
-
