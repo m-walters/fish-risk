@@ -1,11 +1,8 @@
 import logging
-import os
 
 import hydra
 import numpy as np
-import pymc as pm
-from matplotlib import pyplot as plt
-from omegaconf import DictConfig, OmegaConf, ListConfig
+from omegaconf import DictConfig, OmegaConf
 
 from sim import models, plotting, utils
 
@@ -87,7 +84,6 @@ def main(cfg: DictConfig):
             cost_model,
             loss_model,
             risk_model,
-            debug=False,
         )
         experimental_model.policy.reset_apriori_policy(qE)
 

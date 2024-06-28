@@ -2,6 +2,7 @@ import logging
 import os
 
 import hydra
+import jax.numpy as jnp
 from matplotlib import pyplot as plt
 from omegaconf import DictConfig, OmegaConf
 
@@ -25,7 +26,7 @@ def main(cfg: DictConfig):
         logging.basicConfig(level=logging.WARNING)
 
     # Get logger *after* setting the level
-    logger = logging.getLogger("main")
+    logger = logging.getLogger(__name__)
     # Print our config
     logger.info(f"CONFIG\n{OmegaConf.to_yaml(cfg)}")
 
@@ -44,7 +45,22 @@ def main(cfg: DictConfig):
 
     risk_model = getattr(models, cfg.risk.model)(preference_prior=preference_prior, **cfg.risk, seed=cfg.seed)
 
-    params = utils.init_run_params(cfg)
+    # Override omega to have evolving values
+    omega_params = cfg.run_params.omega
+    if isinstance(omega_params, (dict, DictConfig)):
+        if "evolution" in omega_params:
+            omega_iter = utils.ParamIterator(**omega_params)
+            # Init with first value
+            omegas = omega_iter() * jnp.ones((1, cfg.run_params.num_param_batches))
+        else:
+            # Not implemented yet
+            raise NotImplementedError("Undefined omega params")
+    else:
+        omega_iter = utils.ParamIterator(evolution="constant", x_0=omega_params)
+        omegas = omega_iter() * jnp.ones((1, cfg.run_params.num_param_batches))
+
+    # Expand
+    params = utils.init_run_params(cfg, w=omegas)
 
     world_model = models.PreferenceEvolveWorldModel(
         params,
@@ -58,7 +74,7 @@ def main(cfg: DictConfig):
         cost_model,
         loss_model,
         risk_model,
-        debug=False,
+        omega_iter=omega_iter,
     )
     output = world_model()
 

@@ -11,6 +11,7 @@ import xarray as xr
 from omegaconf import DictConfig, ListConfig
 
 Params = namedtuple('Params', 'B, w, r, k, qE')
+FishParams = namedtuple('Params', 'B, r, k, qE')  # Remove 'w'
 
 # For typing -- It's often hard to say if an object is one or the other
 Array = Union[jnp.ndarray, np.ndarray]
@@ -18,15 +19,24 @@ Array = Union[jnp.ndarray, np.ndarray]
 Number = Union[float, int]
 
 
-def init_run_params(cfg):
+def init_run_params(
+    cfg,
+    B0: Array | None = None,
+    r: Array | None = None,
+    k: Array | None = None,
+    w: Array | None = None,
+    qE: Array | None = None,
+):
     """
     Initialize run params and return a Param object
+    Optionally provide arrays to be inserted into Params as overrides
     """
     fish_params = DictConfig(cfg.fish_params)
     B0_ = fish_params.B0
     k_ = fish_params.k
     r_ = fish_params.r
     qE_ = fish_params.qE
+    omega = cfg.run_params.omega
 
     # For values that are constants or not being sampled, they need to have this shape
     param_cast = np.ones((1, cfg.run_params.num_param_batches))
@@ -36,41 +46,45 @@ def init_run_params(cfg):
         # We have to call get_value to get its array value though.
         # This is because sample_prior_predictive creates these expanded values for the sampled variables.
         # I think this is virtually equivalent to just calling e.g. B0_ * param_cast as a numpy array, but anyway...
-        B0 = pm.Data("B", B0_ * param_cast).get_value(return_internal_type=True)
+        if B0 is None:
+            B0 = pm.Data("B", B0_ * param_cast).get_value(return_internal_type=True)
 
-        if not r_:
-            r = pm.Uniform("r", 0.1, 0.5)
-        elif isinstance(r_, DictConfig) and 'lower' in r_:
-            r = pm.Uniform("r", r_.lower, r_.upper)
-        else:
-            r = pm.Data("r", r_ * param_cast).get_value(return_internal_type=True)
+        if r is None:
+            if not r_:
+                r = pm.Uniform("r", 0.1, 0.5)
+            elif isinstance(r_, DictConfig) and 'lower' in r_:
+                r = pm.Uniform("r", r_.lower, r_.upper)
+            else:
+                r = pm.Data("r", r_ * param_cast).get_value(return_internal_type=True)
 
-        if not k_:
-            # Select k s.t. B0 is between 50% and 90% k
-            k = pm.Uniform("k", int(fish_params.B0 / 0.9), int(fish_params.B0 / 0.5))
-        elif isinstance(k_, DictConfig) and 'lower' in k_:
-            k = pm.Uniform("k", k_.lower, k_.upper)
-        else:
-            k = pm.Data("k", k_ * param_cast).get_value(return_internal_type=True)
+        if k is None:
+            if not k_:
+                # Select k s.t. B0 is between 50% and 90% k
+                k = pm.Uniform("k", int(fish_params.B0 / 0.9), int(fish_params.B0 / 0.5))
+            elif isinstance(k_, DictConfig) and 'lower' in k_:
+                k = pm.Uniform("k", k_.lower, k_.upper)
+            else:
+                k = pm.Data("k", k_ * param_cast).get_value(return_internal_type=True)
 
-        omega = cfg.run_params.omega
-        if not omega:
-            w = pm.Data("w", 0.1 * param_cast).get_value(return_internal_type=True)
-        elif isinstance(omega, DictConfig) and 'lower' in omega:
-            w = pm.Uniform("w", omega.lower, omega.upper)
-        elif isinstance(omega, ListConfig):
-            raise ValueError("List of w values not supported")
-        else:
-            w = pm.Data("w", omega * param_cast).get_value(return_internal_type=True)
+        if w is None:
+            if not omega:
+                w = pm.Data("w", 0.1 * param_cast).get_value(return_internal_type=True)
+            elif isinstance(omega, DictConfig) and 'lower' in omega:
+                w = pm.Uniform("w", omega.lower, omega.upper)
+            elif isinstance(omega, ListConfig):
+                raise ValueError("List of w values not supported")
+            else:
+                w = pm.Data("w", omega * param_cast).get_value(return_internal_type=True)
 
         # w = pm.MutableData("w", cfg.run_params.omega.min)
         # qE = pm.Uniform("qE", fish_params.qE.lower, fish_params.qE.upper)
-        if not qE_:
-            qE = pm.Uniform("qE", 0.2, 0.8)
-        elif isinstance(qE_, DictConfig) and 'lower' in qE_:
-            qE = pm.Uniform("qE", qE_.lower, qE_.upper)
-        else:
-            qE = pm.Data("qE", qE_ * param_cast).get_value(return_internal_type=True)
+        if qE is None:
+            if not qE_:
+                qE = pm.Uniform("qE", 0.2, 0.8)
+            elif isinstance(qE_, DictConfig) and 'lower' in qE_:
+                qE = pm.Uniform("qE", qE_.lower, qE_.upper)
+            else:
+                qE = pm.Data("qE", qE_ * param_cast).get_value(return_internal_type=True)
 
         samples = pm.sample_prior_predictive(
             samples=cfg.run_params.num_param_batches,
@@ -110,7 +124,7 @@ class ParamIterator:
         *args, **kwargs
     ):
         self.key = JaxRKey(seed=kwargs.get("seed", 8675309))
-        self.x_0 = x_0
+        self.value = self.x_0 = x_0
         self.x_T = x_T
         self.n_steps = n_steps
 
@@ -135,41 +149,39 @@ class ParamIterator:
     def __call__(self, *args, **kwargs):
         return next(self.evolver)
 
-    @staticmethod
-    def constant_param_evolution(x_0: Number) -> Generator:
+    def constant_param_evolution(self, x_0: Number) -> Generator:
         while True:
             yield x_0
 
-    @staticmethod
-    def linear_param_evolution(x_0: Number, x_end: Number, n_steps: int) -> Generator:
+    def linear_param_evolution(self, x_0: Number, x_end: Number, n_steps: int) -> Generator:
         """
         Yield the next param value in the linear evolution to x_end
         """
         x = x_0
         for i in range(n_steps + 1):
             x = x_0 + i * (x_end - x_0) / n_steps
+            self.value = x
             yield x
 
         # Yield last value for remainder
         while True:
             yield x
 
-    @staticmethod
-    def exponential_param_evolution(x_0: Number, x_end: Number, n_steps: int) -> Generator:
+    def exponential_param_evolution(self, x_0: Number, x_end: Number, n_steps: int) -> Generator:
         """
         Yield the next param value in the exponential evolution to x_end
         """
         x = x_0
         for i in range(n_steps + 1):
             x = x_0 * (x_end / x_0) ** (i / n_steps)
+            self.value = x
             yield x
 
         # Yield last value for remainder
         while True:
             yield x
 
-    @staticmethod
-    def geometric_param_evolution(x_0: Number, x_end: Number, n_steps: int) -> Generator:
+    def geometric_param_evolution(self, x_0: Number, x_end: Number, n_steps: int) -> Generator:
         """
         Yield the next param value in geometric-type evolution
         """
@@ -184,6 +196,7 @@ class ParamIterator:
             if i % t == 0:
                 a = 1 / np.power(2, t_i)
                 x = a * x_0 + (1 - a) * x_end
+                self.value = x
                 t_i += 1
             yield x
 
@@ -191,8 +204,7 @@ class ParamIterator:
         while True:
             yield x
 
-    @staticmethod
-    def step_param_evolution(x_0: Number, x_end: Number, n_steps: int, transitions: List[int]) -> Generator:
+    def step_param_evolution(self, x_0: Number, x_end: Number, n_steps: int, transitions: List[int]) -> Generator:
         """
         Yield the next param value in a step evolution.
         The transitions are a list of step indices to transition.
@@ -204,6 +216,7 @@ class ParamIterator:
         for i in range(n_steps + 1):
             if i in transitions:
                 x = x + delta
+                self.value = x
             yield x
 
         # Yield last value for remainder

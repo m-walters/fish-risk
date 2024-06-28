@@ -14,7 +14,7 @@ from sim.utils import (
     Array, JaxGaussian, JaxRKey, Number, Output, ParamEvolution, ParamIterator, ParamIteratorConfig, Params
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("fish-risk")
 
 
 class ModelBase(ABC):
@@ -94,7 +94,9 @@ class CostModel(ModelBase):
     def __call__(self, qE: Array) -> Array:
         # Shape of array is [m, num_param_batches]
         # where m is either 1 for the "real" timestep or n_montecarlo for planning
-        return np.where(np.abs(1 - qE) > 1e-5, self.C0 * (1 - qE) ** self.gamma - self.C0, self.max_cost)
+        # return np.where(np.abs(1 - qE) > 1e-5, self.C0 * (1 - qE + self.eps) ** self.gamma - self.C0, self.max_cost)
+        # Use 0.9 to avoid qE = 1 limit
+        return self.C0 * (1 - 0.9 * qE) ** self.gamma - self.C0
 
 
 class Policy(ModelBase):
@@ -102,12 +104,18 @@ class Policy(ModelBase):
         super().__init__(*args, **kwargs)
         self.revenue_model = revenue_model
         self.cost_model = cost_model
+        self.qE_min = 0.01
 
     def sample(self, params: Params):
         raise NotImplementedError
 
 
 class ProfitMaximizingPolicy(Policy):
+    def __init__(self, revenue_model: RevenueModel, cost_model: CostModel, *args, **kwargs):
+        super().__init__(revenue_model, cost_model, *args, **kwargs)
+        self.coef = -self.revenue_model.P0 / (self.cost_model.gamma * self.cost_model.C0)
+        self.inv_gamma = 1 / (self.cost_model.gamma - 1)
+
     def sample(self, params: Params) -> Array:
         """
         Generate sample data
@@ -116,13 +124,14 @@ class ProfitMaximizingPolicy(Policy):
         where m is either 1 for the "real" timestep or n_montecarlo for planning
         """
         # note: this models a profit-maximizing agent, and single agent, in particular!
-        coef = -self.revenue_model.P0 / (self.cost_model.gamma * self.cost_model.C0)
         # set entries of B which vanish to 1 arbitrarily
-        Bp = np.where(params.B > 0, params.B ** (self.revenue_model.rho + 1), 1.)
-        inv_gamma_power = 1 / (self.cost_model.gamma - 1)
-        # set Es to 0 if B vanishes
-        Es = np.where(params.B > 0, 1 - (coef * Bp) ** inv_gamma_power, 0.)
-        Es = np.minimum(1, np.maximum(Es, 0.))
+        if np.any(params.B < 1):
+            raise ValueError("B cannot be less than 1 (see fish dynamics class)")
+
+
+        Bp = params.B ** (self.revenue_model.rho + 1)
+        Es = 1 - (self.coef * Bp) ** self.inv_gamma
+        Es = np.minimum(1, np.maximum(Es, self.qE_min))
         # if jnp.logical_and(Es == 0., Bp >= 0.).any():
         #     warnings.warn("Optimal extraction rate qE = 0 but Bp > 0.")
         return Es
@@ -202,7 +211,13 @@ class PreferencePrior(ModelBase):
         Also store param histories as they evolve, keyed by their name
         """
         super().__init__(*args, **kwargs)
-        self.param_history = {}
+        self._param_history = {}
+
+    def get_param_history(self):
+        # Return param history if non-null
+        return {
+            k: np.array(v) for k, v in self._param_history.items() if len(v) > 0
+        }
 
     def _init_param(self, p: Union[Number, ParamIteratorConfig]) -> ParamIterator:
         """
@@ -227,6 +242,10 @@ class PreferencePrior(ModelBase):
 
 
 class SigmoidPreferencePrior(PreferencePrior):
+    """
+    l_bar is a maximal loss we can expect from the simulation
+    """
+
     def __init__(
         self,
         l_bar: Union[ParamIterator, ParamIteratorConfig],
@@ -234,7 +253,7 @@ class SigmoidPreferencePrior(PreferencePrior):
     ):
         super().__init__(*args, **kwargs)
 
-        self.param_history["l_bar"] = []
+        self._param_history["l_bar"] = []
 
         l_bar_iter = self._init_param(l_bar)
         self.l_bar_iter = l_bar_iter
@@ -242,7 +261,7 @@ class SigmoidPreferencePrior(PreferencePrior):
         self.l_bar = l_bar_iter()
 
     def step(self):
-        self.param_history["l_bar"].append(self.l_bar)
+        self._param_history["l_bar"].append(self.l_bar)
         self.l_bar = self.l_bar_iter()
 
     def __call__(self, Lt: Array) -> Array:
@@ -267,7 +286,7 @@ class ExponentialPreferencePrior(PreferencePrior):
     ):
         super().__init__(*args, **kwargs)
 
-        self.param_history = {
+        self._param_history = {
             "p_star": [],
             "l_star": [],
             "k": [],
@@ -287,9 +306,9 @@ class ExponentialPreferencePrior(PreferencePrior):
         return -jnp.log(self.p_star) / self.l_star
 
     def step(self):
-        self.param_history["p_star"].append(self.p_star)
-        self.param_history["l_star"].append(self.l_star)
-        self.param_history["k"].append(self.k)
+        self._param_history["p_star"].append(self.p_star)
+        self._param_history["l_star"].append(self.l_star)
+        self._param_history["k"].append(self.k)
 
         self.p_star = self.p_star_iter()
         self.l_star = self.l_star_iter()
@@ -310,7 +329,7 @@ class UniformPreferencePrior(PreferencePrior):
     ):
         super().__init__(*args, **kwargs)
 
-        self.param_history["l_bar"] = []
+        self._param_history["l_bar"] = []
 
         l_bar_iter = self._init_param(l_bar)
         self.l_bar_iter = l_bar_iter
@@ -318,7 +337,7 @@ class UniformPreferencePrior(PreferencePrior):
         self.l_bar = l_bar_iter()
 
     def step(self):
-        self.param_history["l_bar"].append(self.l_bar)
+        self._param_history["l_bar"].append(self.l_bar)
         self.l_bar = self.l_bar_iter()
 
     def __call__(self, Lt):
@@ -330,9 +349,14 @@ class UniformPreferencePrior(PreferencePrior):
 
 
 class RiskModel(ModelBase):
-    def __init__(self, preference_prior, *args, **kwargs):
+    def __init__(self, preference_prior, min_risk: Number = 0, *args, **kwargs):
+        """
+        Risk model
+        Takes a preference prior and optionally a minimum risk to be subtracted from values for normalization
+        """
         super().__init__(*args, **kwargs)
         self.preference_prior = preference_prior
+        self.min_risk = min_risk
 
     def compute_entropy(self, Lt, Lt_logprob, Vt):
         raise NotImplementedError
@@ -346,6 +370,7 @@ class RiskModel(ModelBase):
         sample_mean = self.preference_prior(Lt).mean(axis=0)
         entropy = self.compute_entropy(Lt, Lt_logprob, Vt)
         Gt = - entropy - sample_mean
+        # Gt = - sample_mean
         return Gt, entropy, sample_mean
 
 
@@ -356,10 +381,10 @@ class DifferentialEntropyRiskModel(RiskModel):
         Input Arrays have shape [n_montecarlo, num_param_batches] since this isn't called for real timesteps
         Return Array has shape [num_param_batches] since we reduce along the montecarlo axis=0
         """
-        ent = entr(Lt) if len(Lt) > 1 else 0.
+        ent = entr(Lt, axis=0) if len(Lt) > 1 else 0.
         if np.any(ent == float('-inf')):
             warnings.warn("-inf encountered in entropy")
-            # if Vt is 0, then just wet the differential entropy to 0
+            # if Vt is 0, then just set the differential entropy to 0
             ent = np.where(np.logical_and(ent == -float('inf'), Vt == 0), 0, ent)
             # set arbitrarily to -10
             ent = np.where(ent == -float('inf'), -10, ent)
@@ -404,7 +429,6 @@ class WorldModel(ModelBase):
         cost_model,
         loss_model,
         risk_model,
-        debug=False,
         *args,
         **kwargs
     ):
@@ -421,15 +445,6 @@ class WorldModel(ModelBase):
         self.cost_model = cost_model
         self.loss_model = loss_model
         self.risk_model = risk_model
-        self.debug = debug
-
-        # Can override logger
-        if self.debug:
-            logger.setLevel(logging.DEBUG)
-
-    def print(self, out: str, force: bool = False):
-        if self.debug or force:
-            print(out)
 
     def sample_policy(self, params: Params) -> Params:
         Et = self.policy.sample(params)
@@ -443,7 +458,7 @@ class WorldModel(ModelBase):
         return new_params
 
     def timestep(
-        self, t: int, old_params: Params
+        self, t: int, old_params: Params, planning: bool, omega_iter: ParamIterator | None = None
     ) -> Tuple[Array, Array, Array, Array, Params]:
         """
         Shapes of variables (like Bt, Ct, ...) will be
@@ -458,6 +473,8 @@ class WorldModel(ModelBase):
             Revt = self.revenue_model(Bt, params.qE)
         Ct = self.cost_model(params.qE)
         Vt = Revt - Ct
+        if not planning:
+            logger.debug(f"Cost[0,0] = {Ct[0, 0]} | Revenue[0,0] = {Revt[0, 0]} | Net Profit[0,0] = {Vt[0, 0]}")
         Vt = jnp.nan_to_num(np.array(Vt), copy=False, nan=0.)
         Lt, Lt_logprob = self.loss_model(Vt, t, params.w)
 
@@ -470,6 +487,11 @@ class WorldModel(ModelBase):
             qE=params.qE
         )
 
+        if omega_iter is not None:
+            # Step omega
+            omega = omega_iter() * jnp.ones_like(params.w)
+            params = params._replace(w=omega)
+
         return Lt, Lt_logprob, Vt, Bt, params
 
     def plan(self, params: Params) -> Array:
@@ -479,12 +501,20 @@ class WorldModel(ModelBase):
         Return shape is [num_param_batches]
         """
         Rt_sim = jnp.zeros(self.num_param_batches)
+        ent = jnp.zeros(self.num_param_batches)
+        extrinsic = jnp.zeros(self.num_param_batches)
         for t_plan in range(self.plan_horizon):
-            Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params)
+            Lt, Lt_logprob, Vt, Bt, params = self.timestep(t_plan, params, planning=True, omega_iter=None)
             Gt, entropy, sample_mean = self.risk_model(Lt, Lt_logprob, Vt)
             Rt_sim += Gt
+            ent += entropy
+            extrinsic += sample_mean
 
-        logger.debug("plan last: -entropy {} | -sample_mean {} | risk {}".format(-entropy, -sample_mean, Gt))
+        logger.debug(
+            "plan last: -entropy.mean {} | -sample_mean.mean {} | risk.mean {}".format(
+                -ent.mean(), -extrinsic.mean(), Rt_sim.mean()
+            )
+        )
 
         return Rt_sim
 
@@ -520,7 +550,7 @@ class WorldModel(ModelBase):
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
             # behaviour of agent is myopic in that it doesn't care about planning risk
-            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params, planning=False)
             sim_params = self.get_montecarlo_params()
             Rt_sim = self.plan(sim_params)
             bs.append(Bt_sim)
@@ -530,7 +560,7 @@ class WorldModel(ModelBase):
 
         return Output(
             Es=es, Bs=bs, Vs=vs, Rts=rts, Lts=lts,
-            param_history=self.risk_model.preference_prior.param_history
+            param_history=self.risk_model.preference_prior.get_param_history()
         )
 
 
@@ -573,7 +603,6 @@ class PreferenceEvolveWorldModel(WorldModel):
         cost_model,
         loss_model,
         risk_model,
-        debug=False,
         *args,
         **kwargs
     ):
@@ -589,7 +618,6 @@ class PreferenceEvolveWorldModel(WorldModel):
             cost_model,
             loss_model,
             risk_model,
-            debug=False,
             *args,
             **kwargs
         )
@@ -605,11 +633,13 @@ class PreferenceEvolveWorldModel(WorldModel):
         self.cost_model = cost_model
         self.loss_model = loss_model
         self.risk_model = risk_model
-        self.debug = debug
 
-        # Can override logger
-        if self.debug:
-            logger.setLevel(logging.DEBUG)
+        # Custom omega iterator for now
+        self.omega_iter = kwargs.get("omega_iter", None)
+        if self.omega_iter is not None:
+            # Init the first omega value and update params
+            omega = self.omega_iter() * jnp.ones_like(self.params.w)
+            self.params = self.params._replace(w=omega)
 
     def __call__(self) -> Output:
         """
@@ -624,10 +654,14 @@ class PreferenceEvolveWorldModel(WorldModel):
         vs = []
         rts = []
         lts = []
+        ws = []
         for t_sim in range(self.real_horizon):
             es.append(self.params.qE)
+            ws.append(self.omega_iter.value)
             # behaviour of agent is myopic in that it doesn't care about planning risk
-            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(0, self.params)
+            Lt, Lt_logits, Vt_sim, Bt_sim, self.params = self.timestep(
+                0, self.params, planning=False, omega_iter=self.omega_iter
+            )
             sim_params = self.get_montecarlo_params()
             Rt_sim = self.plan(sim_params)
             bs.append(Bt_sim)
@@ -637,7 +671,12 @@ class PreferenceEvolveWorldModel(WorldModel):
             # Advance the preference params
             self.risk_model.preference_prior.step()
 
+        # Save the preference params and omega history
+        param_history = {
+            "omega": ws,
+            **self.risk_model.preference_prior.get_param_history()
+        }
+
         return Output(
-            Es=es, Bs=bs, Vs=vs, Rts=rts, Lts=lts,
-            param_history=self.risk_model.preference_prior.param_history
+            Es=es, Bs=bs, Vs=vs, Rts=rts, Lts=lts, param_history=param_history
         )

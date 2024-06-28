@@ -58,7 +58,7 @@ class Plotter:
         colors = self.get_color_wheel()
         for omega in self.ds.omega:
             c = next(colors)
-            for i, var in enumerate(['B', 'V', 'Rt', 'E']):
+            for i, var in enumerate(['B', 'V', 'E', 'Rt']):
                 # This produces a pivot table with time as index and batch as columns
                 pivot = self.ds[var].sel(omega=omega).to_pandas()
                 # Melt it to go from wide to long form, with batch as a variable, and our var as value
@@ -77,8 +77,8 @@ class Plotter:
 
         axs[0, 0].set_ylabel('Biomass')
         axs[0, 1].set_ylabel('Profit')
-        axs[1, 0].set_ylabel('Risk')
-        axs[1, 1].set_ylabel('E')
+        axs[1, 0].set_ylabel('E')
+        axs[1, 1].set_ylabel('Risk')
 
         for i in range(2):
             lower_ax = axs[1, i]
@@ -303,6 +303,8 @@ class Plotter:
         ax_map['Lt'].tick_params(axis='y', labelcolor=c2)
 
         ax_map['Rt'].set_ylabel('Risk')
+        # ax_map['Rt'].ticklabel_format(style='scientific')
+
         ax_map[param_name].set_ylabel(param_label, color=c2)
         ax_map[param_name].grid(False)
         ax_map[param_name].tick_params(axis='y', labelcolor=c2)

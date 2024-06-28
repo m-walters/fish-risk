@@ -1,6 +1,6 @@
 # @package _global_
 seed: 8675309
-name: "evolve-preference-2"
+name: "evolve-preference-1000"
 log_level: DEBUG
 
 # fish params
@@ -17,12 +17,18 @@ fish_params:
 world_sim:
   real_horizon: &real_horizon 40  # How long to run for
   plan_horizon: 20  # Planning horizon
-  n_montecarlo: 10
+  n_montecarlo: 1000
 
 # Parameters outside the world sim
 run_params:
-  num_param_batches: 100
-  omega: 0.1
+  num_param_batches: 1000
+  omega:
+    # kwargs for a ParamIterator
+    evolution: "step"
+    x_0: 1.0  # myopic
+    x_T: 0.  # far-sighted
+    n_steps: *real_horizon
+    transitions: [10, 30]
 
 # Action Models
 DE_dynamics:
@@ -37,11 +43,11 @@ revenue:
   rho: -0.5
 cost:
   model: "CostModel"
-  C0: &max_cost 1.0
+  C0: &max_cost 2.0
   gamma: -0.5
   max_cost: *max_cost
 policy:
-  model: "ConstantPolicy"
+  model: "ProfitMaximizingPolicy"
 loss:
   model: "LossModel"
   scale: 0.01
@@ -49,9 +55,9 @@ preference_prior:
   model: "ExponentialPreferencePrior"
   p_star:
     # kwargs for a ParamIterator
-    evolution: "geometric"
+    evolution: "constant"
     x_0: 0.9
-    x_T: 0.1
+#    x_T: 0.1
     n_steps: *real_horizon
 #    transitions: [20]
   l_star:

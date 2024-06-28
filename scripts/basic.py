@@ -1,15 +1,18 @@
 import logging
 import os
+import shutil
 
 import hydra
 import numpy as np
 import pymc as pm
 from matplotlib import pyplot as plt
-from omegaconf import DictConfig, OmegaConf, ListConfig
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from sim import models, plotting, utils
 
 RESULTS_DIR = "../results"
+
+logger = logging.getLogger("fish-risk")
 
 
 @hydra.main(version_base=None, config_path="../configs")
@@ -18,15 +21,14 @@ def main(cfg: DictConfig):
     Set the parameters and run the sim
     """
     log_level = cfg.get("log_level", "INFO")
-    if log_level == "DEBUG":
-        logging.basicConfig(level=logging.DEBUG)
-    elif log_level == "INFO":
-        logging.basicConfig(level=logging.INFO)
-    elif log_level == "WARNING":
-        logging.basicConfig(level=logging.WARNING)
-
     # Get logger *after* setting the level
-    logger = logging.getLogger("main")
+    if log_level == "DEBUG":
+        logger.setLevel(logging.DEBUG)
+    elif log_level == "INFO":
+        logger.setLevel(logging.INFO)
+    elif log_level == "WARNING":
+        logger.setLevel(logging.WARNING)
+
     # Print our config
     logger.info(f"CONFIG\n{OmegaConf.to_yaml(cfg)}")
 
@@ -85,7 +87,6 @@ def main(cfg: DictConfig):
             cost_model,
             loss_model,
             risk_model,
-            debug=False,
         )
         output = experimental_model()
         outputs.append(output)
@@ -95,6 +96,10 @@ def main(cfg: DictConfig):
     ds = omega_results.to_dataset()
     # Automatically save latest
     latest_dir = RESULTS_DIR + "/latest"
+    # Clear latest_dir if it exists
+    if os.path.exists(latest_dir):
+        shutil.rmtree(latest_dir)
+
     os.makedirs(latest_dir, exist_ok=True)
     OmegaConf.save(config=cfg, f=f"{latest_dir}/config.yaml")
     omega_results.save_ds(ds, f"{latest_dir}/omega_results.nc")
